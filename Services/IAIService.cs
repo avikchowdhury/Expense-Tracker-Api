@@ -1,11 +1,14 @@
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using ExpenseTracker.Api.Dtos;
 
 namespace ExpenseTracker.Api.Services
 {
     public interface IAIService
     {
         Task<ReceiptParseResult> ParseReceiptAsync(IFormFile file);
+        Task<AiInsightSnapshotDto> GetInsightsAsync(int userId);
+        Task<AiChatResponseDto> ChatAsync(int userId, string message);
     }
 
     public class ReceiptParseResult

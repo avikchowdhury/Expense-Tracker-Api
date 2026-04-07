@@ -20,5 +20,8 @@ namespace ExpenseTracker.Api.Models
         public ICollection<Expense> Expenses { get; set; } = new List<Expense>();
 
         public ICollection<Budget> Budgets { get; set; } = new List<Budget>();
+
+        // Avatar/profile picture URL
+        public string? AvatarUrl { get; set; }
     }
 }

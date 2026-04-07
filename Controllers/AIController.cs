@@ -1,7 +1,9 @@
 using ExpenseTracker.Api.Services;
+using ExpenseTracker.Api.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace ExpenseTracker.Api.Controllers
@@ -28,6 +30,35 @@ namespace ExpenseTracker.Api.Controllers
             }
 
             var result = await _aiService.ParseReceiptAsync(request.File);
+            return Ok(result);
+        }
+
+        [HttpGet("insights")]
+        public async Task<IActionResult> GetInsights()
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            {
+                return Unauthorized();
+            }
+
+            var result = await _aiService.GetInsightsAsync(userId);
+            return Ok(result);
+        }
+
+        [HttpPost("chat")]
+        public async Task<IActionResult> Chat([FromBody] AiChatRequestDto request)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            {
+                return Unauthorized();
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Message))
+            {
+                return BadRequest(new { message = "Please send a question for the assistant." });
+            }
+
+            var result = await _aiService.ChatAsync(userId, request.Message);
             return Ok(result);
         }
     }

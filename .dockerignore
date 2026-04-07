@@ -1,0 +1,11 @@
+bin/
+obj/
+*.db
+*.mdf
+*.ldf
+.env
+.env.*
+.vs/
+.git/
+.gitignore
+Dockerfile

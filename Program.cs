@@ -13,7 +13,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    options.OperationFilter<SwaggerFileUploadOperationFilter>();
+    options.OperationFilter<ExpenseTracker.Api.Extensions.FileUploadOperationFilter>();
 });
 
 builder.Services.AddDbContext<ExpenseTrackerDbContext>(options =>
@@ -52,6 +52,7 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IReceiptService, ReceiptService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddHttpClient<IAIService, AIService>();
+builder.Services.AddMemoryCache();
 
 builder.Services.AddCors(options =>
 {
@@ -75,6 +76,7 @@ app.UseSwaggerUI(options =>
 });
 
 app.UseCors("AllowLocalhost");
+
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
