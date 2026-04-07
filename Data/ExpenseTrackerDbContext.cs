@@ -45,6 +45,11 @@ namespace ExpenseTracker.Api.Data
                     .WithMany()
                     .HasForeignKey(x => x.CategoryId)
                     .OnDelete(DeleteBehavior.SetNull);
+
+                expense.HasOne(x => x.Receipt)
+                    .WithMany(x => x.Expenses)
+                    .HasForeignKey(x => x.ReceiptId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<Budget>(budget =>

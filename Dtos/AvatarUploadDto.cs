@@ -2,6 +2,6 @@ namespace ExpenseTracker.Api.Dtos
 {
     public class AvatarUploadDto
     {
-        public Microsoft.AspNetCore.Http.IFormFile File { get; set; }
+        public Microsoft.AspNetCore.Http.IFormFile File { get; set; } = null!;
     }
 }

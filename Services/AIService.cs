@@ -28,21 +28,23 @@ namespace ExpenseTracker.Api.Services
 
         public async Task<ReceiptParseResult> ParseReceiptAsync(IFormFile file)
         {
+            await using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            var fileBytes = ms.ToArray();
+
             var aiEndpoint = _configuration["AzureAI:Endpoint"];
             var aiKey = _configuration["AzureAI:Key"];
             if (string.IsNullOrWhiteSpace(aiEndpoint) || !Uri.IsWellFormedUriString(aiEndpoint, UriKind.Absolute) || string.IsNullOrWhiteSpace(aiKey))
             {
-                return BuildFallbackReceiptParse(file.FileName);
+                return BuildFallbackReceiptParse(file.FileName, fileBytes);
             }
 
             try
             {
                 using var content = new MultipartFormDataContent();
-                using var ms = new MemoryStream();
-                await file.CopyToAsync(ms);
-                ms.Position = 0;
-                var fileContent = new ByteArrayContent(ms.ToArray());
-                fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(file.ContentType);
+                var fileContent = new ByteArrayContent(fileBytes);
+                var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType;
+                fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
                 content.Add(fileContent, "file", file.FileName);
 
                 _httpClient.DefaultRequestHeaders.Clear();
@@ -52,11 +54,11 @@ namespace ExpenseTracker.Api.Services
                 response.EnsureSuccessStatusCode();
                 var json = await response.Content.ReadAsStringAsync();
                 var result = JsonSerializer.Deserialize<ReceiptParseResult>(json);
-                return result ?? BuildFallbackReceiptParse(file.FileName);
+                return result ?? BuildFallbackReceiptParse(file.FileName, fileBytes);
             }
             catch
             {
-                return BuildFallbackReceiptParse(file.FileName);
+                return BuildFallbackReceiptParse(file.FileName, fileBytes);
             }
         }
 
@@ -246,29 +248,17 @@ namespace ExpenseTracker.Api.Services
             };
         }
 
-        private static ReceiptParseResult BuildFallbackReceiptParse(string fileName)
+        private static ReceiptParseResult BuildFallbackReceiptParse(string fileName, byte[]? fileBytes = null)
         {
-            var normalized = Path.GetFileNameWithoutExtension(fileName)?.Replace("-", " ").Replace("_", " ").ToLowerInvariant() ?? "receipt";
-            var category = normalized.Contains("fuel") || normalized.Contains("uber") || normalized.Contains("travel")
-                ? "Travel"
-                : normalized.Contains("grocery") || normalized.Contains("market") || normalized.Contains("food")
-                    ? "Groceries"
-                    : normalized.Contains("rent") || normalized.Contains("home")
-                        ? "Housing"
-                        : "Uncategorized";
-
-            var vendor = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-            var vendorLabel = string.IsNullOrWhiteSpace(vendor)
-                ? "Receipt upload"
-                : char.ToUpper(vendor[0]) + vendor.Substring(1);
+            var fallback = ReceiptFallbackHelper.Parse(fileName, fileBytes);
 
             return new ReceiptParseResult
             {
-                Vendor = vendorLabel,
-                Amount = 0m,
-                Category = category,
-                Date = DateTime.UtcNow.ToString("yyyy-MM-dd"),
-                RawText = $"Fallback AI preview generated from file name '{fileName}'."
+                Vendor = fallback.Vendor,
+                Amount = fallback.Amount,
+                Category = fallback.Category,
+                Date = fallback.Date,
+                RawText = fallback.RawText
             };
         }
     }

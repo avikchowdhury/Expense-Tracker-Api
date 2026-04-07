@@ -17,6 +17,7 @@ RUN dotnet publish "ExpenseTracker.Api.csproj" -c Release -o /app/publish
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-# Ensure avatars directory exists and is writable
-RUN mkdir -p /app/avatars && chmod -R 777 /app/avatars
+ENV Storage__RootPath=/app_data
+RUN mkdir -p /app_data/avatars /app_data/receipts && chmod -R 777 /app_data
+VOLUME ["/app_data"]
 ENTRYPOINT ["dotnet", "ExpenseTracker.Api.dll"]

@@ -84,17 +84,15 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
-            var receipt = await _receiptService.GetReceiptByIdAsync(userId, id);
+            var receipt = await _receiptService.UpdateReceiptAsync(userId, id, dto.Category, dto.ParsedContentJson);
             if (receipt == null) return NotFound();
-            receipt.Category = dto.Category;
-            receipt.ParsedContentJson = dto.ParsedContentJson;
-            // Persist changes
-            using (var scope = HttpContext.RequestServices.CreateScope())
-            {
-                var db = (ExpenseTracker.Api.Data.ExpenseTrackerDbContext)scope.ServiceProvider.GetService(typeof(ExpenseTracker.Api.Data.ExpenseTrackerDbContext));
-                db.Receipts.Update(receipt);
-                await db.SaveChangesAsync();
-            }
+            dto.Id = receipt.Id;
+            dto.UserId = receipt.UserId;
+            dto.UploadedAt = receipt.UploadedAt;
+            dto.FileName = receipt.FileName;
+            dto.BlobUrl = receipt.BlobUrl;
+            dto.TotalAmount = receipt.TotalAmount;
+            dto.Vendor = receipt.Vendor;
             return Ok(dto);
         }
 
@@ -103,14 +101,8 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
-            var receipt = await _receiptService.GetReceiptByIdAsync(userId, id);
-            if (receipt == null) return NotFound();
-            using (var scope = HttpContext.RequestServices.CreateScope())
-            {
-                var db = (ExpenseTracker.Api.Data.ExpenseTrackerDbContext)scope.ServiceProvider.GetService(typeof(ExpenseTracker.Api.Data.ExpenseTrackerDbContext));
-                db.Receipts.Remove(receipt);
-                await db.SaveChangesAsync();
-            }
+            var deleted = await _receiptService.DeleteReceiptAsync(userId, id);
+            if (!deleted) return NotFound();
             return Ok(new { success = true });
         }
 

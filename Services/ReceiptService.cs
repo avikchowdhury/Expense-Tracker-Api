@@ -8,10 +8,12 @@ namespace ExpenseTracker.Api.Services
     public class ReceiptService : IReceiptService
     {
         private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly FileStoragePaths _storagePaths;
 
-        public ReceiptService(ExpenseTrackerDbContext dbContext)
+        public ReceiptService(ExpenseTrackerDbContext dbContext, FileStoragePaths storagePaths)
         {
             _dbContext = dbContext;
+            _storagePaths = storagePaths;
         }
 
         public async Task<Receipt> StoreReceiptAsync(int userId, IFormFile file, CancellationToken cancellationToken = default)
@@ -26,12 +28,14 @@ namespace ExpenseTracker.Api.Services
                 ParsedContentJson = "{}"
             };
 
-            var uploads = Path.Combine(Path.GetTempPath(), "receipt_uploads");
-            Directory.CreateDirectory(uploads);
+            Directory.CreateDirectory(_storagePaths.ReceiptsPath);
 
-            var filePath = Path.Combine(uploads, $"{Guid.NewGuid()}_{file.FileName}");
-            await using var stream = File.Create(filePath);
-            await file.CopyToAsync(stream, cancellationToken);
+            var filePath = Path.Combine(_storagePaths.ReceiptsPath, $"{Guid.NewGuid()}_{file.FileName}");
+            await using (var stream = File.Create(filePath))
+            {
+                await file.CopyToAsync(stream, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
 
             receipt.BlobUrl = filePath;
 
@@ -46,6 +50,8 @@ namespace ExpenseTracker.Api.Services
 
             _dbContext.Receipts.Add(receipt);
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            await SyncExpenseFromReceiptAsync(receipt, cancellationToken);
 
             return receipt;
         }
@@ -64,18 +70,116 @@ namespace ExpenseTracker.Api.Services
                 .ToListAsync();
         }
 
+        public async Task<Receipt?> UpdateReceiptAsync(int userId, int receiptId, string? category, string? parsedContentJson, CancellationToken cancellationToken = default)
+        {
+            var receipt = await GetReceiptByIdAsync(userId, receiptId);
+            if (receipt == null)
+            {
+                return null;
+            }
+
+            receipt.Category = category;
+            receipt.ParsedContentJson = parsedContentJson;
+
+            _dbContext.Receipts.Update(receipt);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await SyncExpenseFromReceiptAsync(receipt, cancellationToken);
+
+            return receipt;
+        }
+
+        public async Task<bool> DeleteReceiptAsync(int userId, int receiptId, CancellationToken cancellationToken = default)
+        {
+            var receipt = await GetReceiptByIdAsync(userId, receiptId);
+            if (receipt == null)
+            {
+                return false;
+            }
+
+            var linkedExpenses = await _dbContext.Expenses
+                .Where(x => x.UserId == userId && x.ReceiptId == receiptId)
+                .ToListAsync(cancellationToken);
+
+            if (linkedExpenses.Count > 0)
+            {
+                _dbContext.Expenses.RemoveRange(linkedExpenses);
+            }
+
+            _dbContext.Receipts.Remove(receipt);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            return true;
+        }
+
         private Task<string> ParseReceiptAsync(string filePath, CancellationToken cancellationToken)
         {
-            // Mocked parsing as placeholder
+            var fallback = ReceiptFallbackHelper.Parse(filePath);
+
             var result = new
             {
-                Vendor = "Unknown Vendor",
-                TotalAmount = 0.0M,
-                Category = "Uncategorized",
-                Items = new object[] { }
+                Vendor = fallback.Vendor,
+                TotalAmount = fallback.Amount,
+                Category = fallback.Category,
+                Date = fallback.Date,
+                RawText = fallback.RawText,
+                Items = fallback.Items
             };
 
             return Task.FromResult(System.Text.Json.JsonSerializer.Serialize(result));
+        }
+
+        private async Task SyncExpenseFromReceiptAsync(Receipt receipt, CancellationToken cancellationToken)
+        {
+            var expense = await _dbContext.Expenses
+                .FirstOrDefaultAsync(x => x.UserId == receipt.UserId && x.ReceiptId == receipt.Id, cancellationToken);
+
+            var category = await ResolveCategoryAsync(receipt.UserId, receipt.Category, cancellationToken);
+
+            if (expense == null)
+            {
+                expense = new Expense
+                {
+                    UserId = receipt.UserId,
+                    ReceiptId = receipt.Id
+                };
+                _dbContext.Expenses.Add(expense);
+            }
+
+            expense.Date = receipt.UploadedAt;
+            expense.Amount = receipt.TotalAmount;
+            expense.CategoryId = category?.Id;
+            expense.Description = !string.IsNullOrWhiteSpace(receipt.Vendor) ? receipt.Vendor : receipt.FileName;
+            expense.Currency = "USD";
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        private async Task<Category?> ResolveCategoryAsync(int userId, string? categoryName, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(categoryName) || categoryName.Equals("Uncategorized", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var normalized = categoryName.Trim();
+            var category = await _dbContext.Categories
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.Name == normalized, cancellationToken);
+
+            if (category != null)
+            {
+                return category;
+            }
+
+            category = new Category
+            {
+                UserId = userId,
+                Name = normalized
+            };
+
+            _dbContext.Categories.Add(category);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            return category;
         }
     }
 }

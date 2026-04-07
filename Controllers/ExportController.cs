@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
 using System.IO;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace ExpenseTracker.Api.Controllers
@@ -23,7 +24,8 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("excel")]
         public async Task<IActionResult> ExportToExcel()
         {
-            var userId = int.Parse(User.Identity.Name);
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
             var expenses = await _dbContext.Expenses.Where(e => e.UserId == userId).ToListAsync();
             using var package = new ExcelPackage();
             var ws = package.Workbook.Worksheets.Add("Expenses");

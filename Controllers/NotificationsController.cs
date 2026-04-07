@@ -11,7 +11,7 @@ namespace ExpenseTracker.Api.Controllers
     public class NotificationsController : ControllerBase
     {
         [HttpGet]
-        public async Task<IActionResult> GetNotifications()
+        public IActionResult GetNotifications()
         {
             // TODO: Fetch notifications for the user
             var notifications = new List<string> { "Budget exceeded!", "AI suggestion: Review your receipts." };
@@ -19,7 +19,7 @@ namespace ExpenseTracker.Api.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> SendNotification([FromBody] string message)
+        public IActionResult SendNotification([FromBody] string message)
         {
             // TODO: Send notification to the user
             return Ok();

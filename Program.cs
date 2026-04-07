@@ -4,9 +4,18 @@ using ExpenseTracker.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.FileProviders;
 using System.Text;
 
-var builder = WebApplication.CreateBuilder(args);
+var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+Directory.CreateDirectory(webRootPath);
+
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = Directory.GetCurrentDirectory(),
+    WebRootPath = webRootPath
+});
 
 builder.Services.AddControllers();
 
@@ -22,6 +31,25 @@ builder.Services.AddDbContext<ExpenseTrackerDbContext>(options =>
         "Server=(localdb)\\mssqllocaldb;Database=ExpenseTrackerDb;Trusted_Connection=True;MultipleActiveResultSets=true";
     options.UseSqlServer(connectionString);
 });
+
+builder.Services.Configure<FileStorageOptions>(builder.Configuration.GetSection("Storage"));
+
+var storageOptions = builder.Configuration.GetSection("Storage").Get<FileStorageOptions>() ?? new FileStorageOptions();
+var storageRootPath = Path.IsPathRooted(storageOptions.RootPath)
+    ? storageOptions.RootPath
+    : Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, storageOptions.RootPath));
+var storagePaths = new FileStoragePaths
+{
+    RootPath = storageRootPath,
+    AvatarsPath = Path.Combine(storageRootPath, storageOptions.AvatarsFolder),
+    ReceiptsPath = Path.Combine(storageRootPath, storageOptions.ReceiptsFolder)
+};
+
+Directory.CreateDirectory(storagePaths.RootPath);
+Directory.CreateDirectory(storagePaths.AvatarsPath);
+Directory.CreateDirectory(storagePaths.ReceiptsPath);
+
+builder.Services.AddSingleton(storagePaths);
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 
@@ -49,6 +77,7 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IReceiptService, ReceiptService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddHttpClient<IAIService, AIService>();
@@ -78,6 +107,12 @@ app.UseSwaggerUI(options =>
 app.UseCors("AllowLocalhost");
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(storagePaths.AvatarsPath),
+    RequestPath = "/avatars"
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

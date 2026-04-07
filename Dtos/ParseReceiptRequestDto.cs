@@ -4,6 +4,6 @@ namespace ExpenseTracker.Api.Dtos
 {
     public class ParseReceiptRequestDto
     {
-        public IFormFile File { get; set; }
+        public IFormFile File { get; set; } = null!;
     }
 }

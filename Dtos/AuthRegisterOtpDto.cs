@@ -4,5 +4,6 @@ namespace ExpenseTracker.Api.Dtos
     {
         public string Email { get; set; } = null!;
         public string Otp { get; set; } = null!;
+        public string Password { get; set; } = null!;
     }
 }
