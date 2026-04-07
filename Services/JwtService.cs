@@ -1,3 +1,4 @@
+using ExpenseTracker.Api.Configuration;
 using ExpenseTracker.Api.Dtos;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
