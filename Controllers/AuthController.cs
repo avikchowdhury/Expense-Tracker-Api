@@ -2,11 +2,13 @@ using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
 using ExpenseTracker.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
 using System.Net.Mail;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -59,7 +61,7 @@ namespace ExpenseTracker.Api.Controllers
             _dbContext.Users.Add(user);
             await _dbContext.SaveChangesAsync();
 
-            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, user.Role);
+            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, NormalizeRole(user.Role));
             return Ok(tokenResponse);
         }
 
@@ -73,7 +75,7 @@ namespace ExpenseTracker.Api.Controllers
                 return Unauthorized(new { message = "Invalid credentials" });
             }
 
-            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, user.Role);
+            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, NormalizeRole(user.Role));
             return Ok(tokenResponse);
         }
 
@@ -130,7 +132,41 @@ namespace ExpenseTracker.Api.Controllers
             _dbContext.Users.Add(user);
             await _dbContext.SaveChangesAsync();
             _cache.Remove($"otp_{email}");
-            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, user.Role);
+            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, NormalizeRole(user.Role));
+            return Ok(tokenResponse);
+        }
+
+        [Authorize]
+        [HttpPost("bootstrap-admin")]
+        public async Task<IActionResult> BootstrapAdmin()
+        {
+            var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdClaim, out var userId))
+            {
+                return Unauthorized();
+            }
+
+            var user = await _dbContext.Users.FindAsync(userId);
+            if (user is null)
+            {
+                return NotFound(new { message = "User not found." });
+            }
+
+            if (string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                return Ok(_jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, "Admin"));
+            }
+
+            var adminExists = await _dbContext.Users.AnyAsync(existingUser => existingUser.Role == "Admin");
+            if (adminExists)
+            {
+                return BadRequest(new { message = "An admin account already exists. Ask an admin to grant access." });
+            }
+
+            user.Role = "Admin";
+            await _dbContext.SaveChangesAsync();
+
+            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, "Admin");
             return Ok(tokenResponse);
         }
 
@@ -161,6 +197,13 @@ namespace ExpenseTracker.Api.Controllers
             {
                 return false;
             }
+        }
+
+        private static string NormalizeRole(string? role)
+        {
+            return string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase)
+                ? "Admin"
+                : "User";
         }
 
         public class OtpEmailRequest
