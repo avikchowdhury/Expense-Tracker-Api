@@ -15,6 +15,7 @@ namespace ExpenseTracker.Api.Data
         public DbSet<Budget> Budgets => Set<Budget>();
 
         public DbSet<Category> Categories => Set<Category>();
+        public DbSet<VendorCategoryRule> VendorCategoryRules => Set<VendorCategoryRule>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -69,6 +70,21 @@ namespace ExpenseTracker.Api.Data
             {
                 category.HasKey(x => x.Id);
                 category.HasIndex(x => new { x.UserId, x.Name }).IsUnique();
+            });
+
+            modelBuilder.Entity<VendorCategoryRule>(rule =>
+            {
+                rule.HasKey(x => x.Id);
+                rule.Property(x => x.VendorPattern).HasMaxLength(255);
+                rule.HasIndex(x => new { x.UserId, x.VendorPattern }).IsUnique();
+                rule.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                rule.HasOne(x => x.Category)
+                    .WithMany(x => x.VendorRules)
+                    .HasForeignKey(x => x.CategoryId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

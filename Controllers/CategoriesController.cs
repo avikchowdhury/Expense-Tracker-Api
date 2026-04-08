@@ -34,6 +34,30 @@ namespace ExpenseTracker.Api.Controllers
             return Ok(categories);
         }
 
+        [HttpGet("rules")]
+        public async Task<IActionResult> GetVendorRules()
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var rules = await _dbContext.VendorCategoryRules
+                .Where(rule => rule.UserId == userId)
+                .Include(rule => rule.Category)
+                .OrderBy(rule => rule.VendorPattern)
+                .Select(rule => new VendorCategoryRuleDto
+                {
+                    Id = rule.Id,
+                    CategoryId = rule.CategoryId,
+                    CategoryName = rule.Category != null ? rule.Category.Name : string.Empty,
+                    VendorPattern = rule.VendorPattern,
+                    IsActive = rule.IsActive,
+                    CreatedAt = rule.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(rules);
+        }
+
 
         [HttpPost]
         public async Task<IActionResult> AddCategory([FromBody] CategoryDto categoryDto)
@@ -83,6 +107,116 @@ namespace ExpenseTracker.Api.Controllers
             _dbContext.Categories.Remove(category);
             await _dbContext.SaveChangesAsync();
             return NoContent();
+        }
+
+        [HttpPost("rules")]
+        public async Task<IActionResult> AddVendorRule([FromBody] VendorCategoryRuleDto ruleDto)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var normalizedPattern = NormalizeVendorPattern(ruleDto.VendorPattern);
+            if (string.IsNullOrWhiteSpace(normalizedPattern))
+                return BadRequest("Vendor pattern is required.");
+
+            var category = await _dbContext.Categories
+                .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == userId);
+            if (category == null)
+                return BadRequest("Select a valid category.");
+
+            var exists = await _dbContext.VendorCategoryRules
+                .AnyAsync(rule => rule.UserId == userId && rule.VendorPattern.ToLower() == normalizedPattern.ToLower());
+            if (exists)
+                return Conflict("A rule for this vendor pattern already exists.");
+
+            var rule = new VendorCategoryRule
+            {
+                UserId = userId,
+                CategoryId = category.Id,
+                VendorPattern = normalizedPattern,
+                IsActive = ruleDto.IsActive
+            };
+
+            _dbContext.VendorCategoryRules.Add(rule);
+            await _dbContext.SaveChangesAsync();
+
+            return Ok(new VendorCategoryRuleDto
+            {
+                Id = rule.Id,
+                CategoryId = category.Id,
+                CategoryName = category.Name,
+                VendorPattern = rule.VendorPattern,
+                IsActive = rule.IsActive,
+                CreatedAt = rule.CreatedAt
+            });
+        }
+
+        [HttpPut("rules/{id}")]
+        public async Task<IActionResult> UpdateVendorRule(int id, [FromBody] VendorCategoryRuleDto ruleDto)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var normalizedPattern = NormalizeVendorPattern(ruleDto.VendorPattern);
+            if (string.IsNullOrWhiteSpace(normalizedPattern))
+                return BadRequest("Vendor pattern is required.");
+
+            var rule = await _dbContext.VendorCategoryRules
+                .Include(existingRule => existingRule.Category)
+                .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == userId);
+            if (rule == null)
+                return NotFound();
+
+            var category = await _dbContext.Categories
+                .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == userId);
+            if (category == null)
+                return BadRequest("Select a valid category.");
+
+            var exists = await _dbContext.VendorCategoryRules.AnyAsync(existingRule =>
+                existingRule.UserId == userId &&
+                existingRule.VendorPattern.ToLower() == normalizedPattern.ToLower() &&
+                existingRule.Id != id);
+            if (exists)
+                return Conflict("A rule for this vendor pattern already exists.");
+
+            rule.VendorPattern = normalizedPattern;
+            rule.CategoryId = category.Id;
+            rule.IsActive = ruleDto.IsActive;
+
+            await _dbContext.SaveChangesAsync();
+
+            return Ok(new VendorCategoryRuleDto
+            {
+                Id = rule.Id,
+                CategoryId = category.Id,
+                CategoryName = category.Name,
+                VendorPattern = rule.VendorPattern,
+                IsActive = rule.IsActive,
+                CreatedAt = rule.CreatedAt
+            });
+        }
+
+        [HttpDelete("rules/{id}")]
+        public async Task<IActionResult> DeleteVendorRule(int id)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var rule = await _dbContext.VendorCategoryRules
+                .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == userId);
+            if (rule == null)
+                return NotFound();
+
+            _dbContext.VendorCategoryRules.Remove(rule);
+            await _dbContext.SaveChangesAsync();
+            return NoContent();
+        }
+
+        private static string NormalizeVendorPattern(string? vendorPattern)
+        {
+            return string.IsNullOrWhiteSpace(vendorPattern)
+                ? string.Empty
+                : vendorPattern.Trim();
         }
     }
 }

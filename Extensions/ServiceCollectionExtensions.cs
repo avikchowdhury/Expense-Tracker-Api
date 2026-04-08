@@ -75,6 +75,7 @@ namespace ExpenseTracker.Api.Extensions
 
             services.AddScoped<IJwtService, JwtService>();
             services.AddScoped<IBudgetHealthService, BudgetHealthService>();
+            services.AddScoped<IBudgetAdvisorService, BudgetAdvisorService>();
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IReceiptService, ReceiptService>();
             services.AddScoped<IAnalyticsService, AnalyticsService>();

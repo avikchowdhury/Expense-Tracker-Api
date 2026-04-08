@@ -48,6 +48,8 @@ namespace ExpenseTracker.Api.Services
             if (!string.IsNullOrEmpty(parsedData.Vendor)) receipt.Vendor = parsedData.Vendor;
             if (!string.IsNullOrEmpty(parsedData.Category)) receipt.Category = parsedData.Category;
 
+            await ApplyVendorRuleAsync(receipt, cancellationToken);
+
             _dbContext.Receipts.Add(receipt);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -80,6 +82,8 @@ namespace ExpenseTracker.Api.Services
 
             receipt.Category = category;
             receipt.ParsedContentJson = parsedContentJson;
+
+            await ApplyVendorRuleAsync(receipt, cancellationToken);
 
             _dbContext.Receipts.Update(receipt);
             await _dbContext.SaveChangesAsync(cancellationToken);
@@ -152,6 +156,28 @@ namespace ExpenseTracker.Api.Services
             expense.Currency = "USD";
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        private async Task ApplyVendorRuleAsync(Receipt receipt, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(receipt.Vendor))
+            {
+                return;
+            }
+
+            var normalizedVendor = receipt.Vendor.Trim().ToLowerInvariant();
+            var matchingRule = await _dbContext.VendorCategoryRules
+                .Include(rule => rule.Category)
+                .Where(rule => rule.UserId == receipt.UserId && rule.IsActive)
+                .OrderByDescending(rule => rule.VendorPattern.Length)
+                .FirstOrDefaultAsync(
+                    rule => normalizedVendor.Contains(rule.VendorPattern.ToLower()),
+                    cancellationToken);
+
+            if (matchingRule?.Category != null)
+            {
+                receipt.Category = matchingRule.Category.Name;
+            }
         }
 
         private async Task<Category?> ResolveCategoryAsync(int userId, string? categoryName, CancellationToken cancellationToken)

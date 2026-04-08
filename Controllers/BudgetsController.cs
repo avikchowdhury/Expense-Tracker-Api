@@ -19,11 +19,16 @@ namespace ExpenseTracker.Api.Controllers
     {
         private readonly ExpenseTrackerDbContext _dbContext;
         private readonly IBudgetHealthService _budgetHealthService;
+        private readonly IBudgetAdvisorService _budgetAdvisorService;
 
-        public BudgetsController(ExpenseTrackerDbContext dbContext, IBudgetHealthService budgetHealthService)
+        public BudgetsController(
+            ExpenseTrackerDbContext dbContext,
+            IBudgetHealthService budgetHealthService,
+            IBudgetAdvisorService budgetAdvisorService)
         {
             _dbContext = dbContext;
             _budgetHealthService = budgetHealthService;
+            _budgetAdvisorService = budgetAdvisorService;
         }
 
         [HttpGet("{id}")]
@@ -76,6 +81,16 @@ namespace ExpenseTracker.Api.Controllers
                 status = snapshot.Status,
                 message = snapshot.Message
             });
+        }
+
+        [HttpGet("advisor")]
+        public async Task<IActionResult> GetBudgetAdvisor()
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var snapshot = await _budgetAdvisorService.GetBudgetAdvisorAsync(userId);
+            return Ok(snapshot);
         }
 
         [HttpGet]

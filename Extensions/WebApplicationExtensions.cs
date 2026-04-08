@@ -1,4 +1,6 @@
+using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 
 namespace ExpenseTracker.Api.Extensions
@@ -7,6 +9,12 @@ namespace ExpenseTracker.Api.Extensions
     {
         public static WebApplication UseExpenseTrackerPlatform(this WebApplication app)
         {
+            using (var scope = app.Services.CreateScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<ExpenseTrackerDbContext>();
+                dbContext.Database.Migrate();
+            }
+
             var storagePaths = app.Services.GetRequiredService<FileStoragePaths>();
 
             app.UseSwagger();
