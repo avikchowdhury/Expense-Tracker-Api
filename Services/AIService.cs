@@ -18,12 +18,18 @@ namespace ExpenseTracker.Api.Services
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _configuration;
         private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IBudgetHealthService _budgetHealthService;
 
-        public AIService(HttpClient httpClient, IConfiguration configuration, ExpenseTrackerDbContext dbContext)
+        public AIService(
+            HttpClient httpClient,
+            IConfiguration configuration,
+            ExpenseTrackerDbContext dbContext,
+            IBudgetHealthService budgetHealthService)
         {
             _httpClient = httpClient;
             _configuration = configuration;
             _dbContext = dbContext;
+            _budgetHealthService = budgetHealthService;
         }
 
         public async Task<ReceiptParseResult> ParseReceiptAsync(IFormFile file)
@@ -97,10 +103,9 @@ namespace ExpenseTracker.Api.Services
                 .FirstOrDefault();
 
             var topCategory = topCategoryGroup?.Category ?? "N/A";
-            var generalBudget = budgets.FirstOrDefault(x => x.Category == "General") ?? budgets.FirstOrDefault();
-
-            var ratio = generalBudget?.MonthlyLimit > 0 ? monthSpend / generalBudget.MonthlyLimit : 0m;
-            var budgetHealth = generalBudget == null
+            var budgetSnapshot = await _budgetHealthService.GetBudgetHealthAsync(userId, monthStart, monthStart.AddMonths(1));
+            var ratio = budgetSnapshot.Budget > 0 ? monthSpend / budgetSnapshot.Budget : 0m;
+            var budgetHealth = budgetSnapshot.BudgetCount == 0
                 ? "No active budget"
                 : ratio >= 1m
                     ? "Over budget"
@@ -112,12 +117,12 @@ namespace ExpenseTracker.Api.Services
             var suggestions = new List<string>();
             var insights = new List<AiInsightDto>();
 
-            if (generalBudget != null)
+            if (budgetSnapshot.BudgetCount > 0)
             {
                 insights.Add(new AiInsightDto
                 {
                     Title = "Budget pulse",
-                    Summary = $"You have spent {monthSpend:C} against a {generalBudget.MonthlyLimit:C} budget this month.",
+                    Summary = $"You have spent {monthSpend:C} against a combined {budgetSnapshot.Budget:C} budget this month.",
                     Severity = ratio >= 1m ? "critical" : ratio >= 0.8m ? "warning" : "positive",
                     MetricLabel = "Budget used",
                     MetricValue = $"{Math.Round(ratio * 100, 0)}%",

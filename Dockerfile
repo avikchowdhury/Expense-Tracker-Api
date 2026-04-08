@@ -8,7 +8,6 @@ WORKDIR /src
 COPY ExpenseTracker.Api.csproj .
 RUN dotnet restore "ExpenseTracker.Api.csproj"
 COPY . .
-WORKDIR "/src/ExpenseTracker.Api"
 RUN dotnet build "ExpenseTracker.Api.csproj" -c Release -o /app/build
 
 FROM build AS publish

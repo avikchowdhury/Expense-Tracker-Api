@@ -27,6 +27,7 @@ namespace ExpenseTracker.Api.Data
             modelBuilder.Entity<Receipt>(receipt =>
             {
                 receipt.HasKey(x => x.Id);
+                receipt.Property(x => x.TotalAmount).HasPrecision(18, 2);
                 receipt.HasOne(x => x.User)
                     .WithMany(x => x.Receipts)
                     .HasForeignKey(x => x.UserId)
@@ -36,6 +37,7 @@ namespace ExpenseTracker.Api.Data
             modelBuilder.Entity<Expense>(expense =>
             {
                 expense.HasKey(x => x.Id);
+                expense.Property(x => x.Amount).HasPrecision(18, 2);
                 expense.HasOne(x => x.User)
                     .WithMany(x => x.Expenses)
                     .HasForeignKey(x => x.UserId)
@@ -49,12 +51,14 @@ namespace ExpenseTracker.Api.Data
                 expense.HasOne(x => x.Receipt)
                     .WithMany(x => x.Expenses)
                     .HasForeignKey(x => x.ReceiptId)
-                    .OnDelete(DeleteBehavior.Cascade);
+                    .OnDelete(DeleteBehavior.NoAction);
             });
 
             modelBuilder.Entity<Budget>(budget =>
             {
                 budget.HasKey(x => x.Id);
+                budget.Property(x => x.MonthlyLimit).HasPrecision(18, 2);
+                budget.Property(x => x.CurrentSpent).HasPrecision(18, 2);
                 budget.HasOne(x => x.User)
                     .WithMany(x => x.Budgets)
                     .HasForeignKey(x => x.UserId)

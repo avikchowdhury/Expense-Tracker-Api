@@ -80,9 +80,20 @@ namespace ExpenseTracker.Api.Controllers
             var user = await _dbContext.Users.FindAsync(userId);
             if (user == null) return NotFound();
             if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email;
-            if (!string.IsNullOrWhiteSpace(dto.FullName)) user.FullName = dto.FullName;
-            if (!string.IsNullOrWhiteSpace(dto.Phone)) user.Phone = dto.Phone;
-            if (!string.IsNullOrWhiteSpace(dto.Address)) user.Address = dto.Address;
+            if (dto.FullName is not null) user.FullName = string.IsNullOrWhiteSpace(dto.FullName) ? null : dto.FullName.Trim();
+            if (dto.Address is not null) user.Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim();
+
+            if (dto.Phone is not null)
+            {
+                var normalizedPhone = NormalizePhone(dto.Phone);
+                if (normalizedPhone is null && !string.IsNullOrWhiteSpace(dto.Phone))
+                {
+                    return BadRequest(new { message = "Phone number must include a country code and a 10-digit number." });
+                }
+
+                user.Phone = normalizedPhone;
+            }
+
             await _dbContext.SaveChangesAsync();
             return Ok(new
             {
@@ -115,6 +126,37 @@ namespace ExpenseTracker.Api.Controllers
             using var sha = SHA256.Create();
             var hashed = sha.ComputeHash(Encoding.UTF8.GetBytes(password));
             return Convert.ToBase64String(hashed);
+        }
+
+        private static string? NormalizePhone(string? phone)
+        {
+            if (string.IsNullOrWhiteSpace(phone))
+            {
+                return null;
+            }
+
+            var normalized = phone.Trim();
+            var withoutPlus = normalized.StartsWith("+")
+                ? normalized[1..]
+                : normalized;
+
+            if (withoutPlus.Any(character => !char.IsDigit(character)))
+            {
+                return null;
+            }
+
+            if (withoutPlus.Length < 11 || withoutPlus.Length > 14)
+            {
+                return null;
+            }
+
+            var countryCodeLength = withoutPlus.Length - 10;
+            if (countryCodeLength < 1 || countryCodeLength > 4)
+            {
+                return null;
+            }
+
+            return $"+{withoutPlus}";
         }
 
         private string? BuildAvatarUrl(string? storedAvatarUrl)

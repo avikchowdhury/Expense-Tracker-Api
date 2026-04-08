@@ -1,6 +1,7 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
+using ExpenseTracker.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,10 +18,12 @@ namespace ExpenseTracker.Api.Controllers
     public class BudgetsController : ControllerBase
     {
         private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IBudgetHealthService _budgetHealthService;
 
-        public BudgetsController(ExpenseTrackerDbContext dbContext)
+        public BudgetsController(ExpenseTrackerDbContext dbContext, IBudgetHealthService budgetHealthService)
         {
             _dbContext = dbContext;
+            _budgetHealthService = budgetHealthService;
         }
 
         [HttpGet("{id}")]
@@ -64,40 +67,15 @@ namespace ExpenseTracker.Api.Controllers
                 end = start.AddMonths(1);
             }
 
-            var budget = await _dbContext.Budgets
-                .Where(b => b.UserId == userId && b.Category == "General")
-                .OrderByDescending(b => b.LastReset)
-                .FirstOrDefaultAsync();
+            var snapshot = await _budgetHealthService.GetBudgetHealthAsync(userId, start, end);
 
-            if (budget == null)
+            return Ok(new
             {
-                return Ok(new { budget = 0.0, spent = 0.0, status = "ok", message = "No budget set." });
-            }
-
-            var spent = await _dbContext.Expenses
-                .Where(e => e.UserId == userId && e.Date >= start && e.Date < end)
-                .SumAsync(e => (decimal?)e.Amount) ?? 0.0m;
-
-            string status;
-            string message;
-
-            if (spent < budget.MonthlyLimit * 0.8m)
-            {
-                status = "ok";
-                message = "You are well within your budget.";
-            }
-            else if (spent < budget.MonthlyLimit)
-            {
-                status = "warning";
-                message = "You are close to your budget limit.";
-            }
-            else
-            {
-                status = "over";
-                message = "You have exceeded your budget!";
-            }
-
-            return Ok(new { budget = budget.MonthlyLimit, spent, status, message });
+                budget = snapshot.Budget,
+                spent = snapshot.Spent,
+                status = snapshot.Status,
+                message = snapshot.Message
+            });
         }
 
         [HttpGet]
