@@ -14,11 +14,11 @@ namespace ExpenseTracker.Api.Services
 
     public class BudgetHealthService : IBudgetHealthService
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public BudgetHealthService(ExpenseTrackerDbContext dbContext)
+        public BudgetHealthService(IUnitOfWork unitOfWork)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<BudgetHealthSnapshot> GetBudgetHealthAsync(
@@ -26,7 +26,7 @@ namespace ExpenseTracker.Api.Services
             DateTime periodStartUtc,
             DateTime periodEndUtc)
         {
-            var budgets = await _dbContext.Budgets
+            var budgets = await _unitOfWork.Budgets.Query()
                 .Where(budget => budget.UserId == userId)
                 .ToListAsync();
 
@@ -43,7 +43,7 @@ namespace ExpenseTracker.Api.Services
             }
 
             var totalBudget = budgets.Sum(budget => budget.MonthlyLimit);
-            var spent = await _dbContext.Expenses
+            var spent = await _unitOfWork.Expenses.Query()
                 .Where(expense =>
                     expense.UserId == userId &&
                     expense.Date >= periodStartUtc &&

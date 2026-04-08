@@ -6,17 +6,17 @@ namespace ExpenseTracker.Api.Services
 {
     public class AnalyticsService : IAnalyticsService
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public AnalyticsService(ExpenseTrackerDbContext dbContext)
+        public AnalyticsService(IUnitOfWork unitOfWork)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<IEnumerable<MonthlySpendingDto>> GetMonthlySpendingAsync(int userId, int months = 6)
         {
             var cutoff = DateTime.UtcNow.AddMonths(-months + 1);
-            var grouped = await _dbContext.Expenses
+            var grouped = await _unitOfWork.Expenses.Query()
                 .Where(x => x.UserId == userId && x.Date >= cutoff)
                 .GroupBy(x => new { x.Date.Year, x.Date.Month })
                 .Select(g => new
@@ -40,7 +40,7 @@ namespace ExpenseTracker.Api.Services
 
         public async Task<IEnumerable<(string Category, decimal Total)>> GetCategoryBreakdownAsync(int userId)
         {
-            var results = await _dbContext.Expenses
+            var results = await _unitOfWork.Expenses.Query()
                 .Where(x => x.UserId == userId)
                 .Include(x => x.Category)
                 .GroupBy(x => x.Category)

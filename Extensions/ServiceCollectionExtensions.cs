@@ -29,6 +29,7 @@ namespace ExpenseTracker.Api.Extensions
                     "Server=(localdb)\\mssqllocaldb;Database=ExpenseTrackerDb;Trusted_Connection=True;MultipleActiveResultSets=true";
                 options.UseSqlServer(connectionString);
             });
+            services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));
             var storageOptions = configuration.GetSection("Storage").Get<FileStorageOptions>() ?? new FileStorageOptions();

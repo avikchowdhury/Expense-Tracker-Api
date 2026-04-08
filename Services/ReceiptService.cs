@@ -7,12 +7,12 @@ namespace ExpenseTracker.Api.Services
 {
     public class ReceiptService : IReceiptService
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly FileStoragePaths _storagePaths;
 
-        public ReceiptService(ExpenseTrackerDbContext dbContext, FileStoragePaths storagePaths)
+        public ReceiptService(IUnitOfWork unitOfWork, FileStoragePaths storagePaths)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
             _storagePaths = storagePaths;
         }
 
@@ -50,8 +50,8 @@ namespace ExpenseTracker.Api.Services
 
             await ApplyVendorRuleAsync(receipt, cancellationToken);
 
-            _dbContext.Receipts.Add(receipt);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.Receipts.AddAsync(receipt, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             await SyncExpenseFromReceiptAsync(receipt, cancellationToken);
 
@@ -60,13 +60,13 @@ namespace ExpenseTracker.Api.Services
 
         public async Task<Receipt?> GetReceiptByIdAsync(int userId, int receiptId)
         {
-            return await _dbContext.Receipts
+            return await _unitOfWork.Receipts.Query()
                 .FirstOrDefaultAsync(x => x.Id == receiptId && x.UserId == userId);
         }
 
         public async Task<IEnumerable<Receipt>> GetReceiptsForUserAsync(int userId)
         {
-            return await _dbContext.Receipts
+            return await _unitOfWork.Receipts.Query()
                 .Where(x => x.UserId == userId)
                 .OrderByDescending(x => x.UploadedAt)
                 .ToListAsync();
@@ -85,8 +85,8 @@ namespace ExpenseTracker.Api.Services
 
             await ApplyVendorRuleAsync(receipt, cancellationToken);
 
-            _dbContext.Receipts.Update(receipt);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            _unitOfWork.Receipts.Update(receipt);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
             await SyncExpenseFromReceiptAsync(receipt, cancellationToken);
 
             return receipt;
@@ -100,17 +100,17 @@ namespace ExpenseTracker.Api.Services
                 return false;
             }
 
-            var linkedExpenses = await _dbContext.Expenses
+            var linkedExpenses = await _unitOfWork.Expenses.Query()
                 .Where(x => x.UserId == userId && x.ReceiptId == receiptId)
                 .ToListAsync(cancellationToken);
 
             if (linkedExpenses.Count > 0)
             {
-                _dbContext.Expenses.RemoveRange(linkedExpenses);
+                _unitOfWork.Expenses.RemoveRange(linkedExpenses);
             }
 
-            _dbContext.Receipts.Remove(receipt);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            _unitOfWork.Receipts.Remove(receipt);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return true;
         }
@@ -134,7 +134,7 @@ namespace ExpenseTracker.Api.Services
 
         private async Task SyncExpenseFromReceiptAsync(Receipt receipt, CancellationToken cancellationToken)
         {
-            var expense = await _dbContext.Expenses
+            var expense = await _unitOfWork.Expenses.Query()
                 .FirstOrDefaultAsync(x => x.UserId == receipt.UserId && x.ReceiptId == receipt.Id, cancellationToken);
 
             var category = await ResolveCategoryAsync(receipt.UserId, receipt.Category, cancellationToken);
@@ -146,7 +146,7 @@ namespace ExpenseTracker.Api.Services
                     UserId = receipt.UserId,
                     ReceiptId = receipt.Id
                 };
-                _dbContext.Expenses.Add(expense);
+                await _unitOfWork.Expenses.AddAsync(expense, cancellationToken);
             }
 
             expense.Date = receipt.UploadedAt;
@@ -155,7 +155,7 @@ namespace ExpenseTracker.Api.Services
             expense.Description = !string.IsNullOrWhiteSpace(receipt.Vendor) ? receipt.Vendor : receipt.FileName;
             expense.Currency = "USD";
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         private async Task ApplyVendorRuleAsync(Receipt receipt, CancellationToken cancellationToken)
@@ -166,7 +166,7 @@ namespace ExpenseTracker.Api.Services
             }
 
             var normalizedVendor = receipt.Vendor.Trim().ToLowerInvariant();
-            var matchingRule = await _dbContext.VendorCategoryRules
+            var matchingRule = await _unitOfWork.VendorCategoryRules.Query()
                 .Include(rule => rule.Category)
                 .Where(rule => rule.UserId == receipt.UserId && rule.IsActive)
                 .OrderByDescending(rule => rule.VendorPattern.Length)
@@ -188,7 +188,7 @@ namespace ExpenseTracker.Api.Services
             }
 
             var normalized = categoryName.Trim();
-            var category = await _dbContext.Categories
+            var category = await _unitOfWork.Categories.Query()
                 .FirstOrDefaultAsync(x => x.UserId == userId && x.Name == normalized, cancellationToken);
 
             if (category != null)
@@ -202,8 +202,8 @@ namespace ExpenseTracker.Api.Services
                 Name = normalized
             };
 
-            _dbContext.Categories.Add(category);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.Categories.AddAsync(category, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return category;
         }

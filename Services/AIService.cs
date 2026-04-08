@@ -19,7 +19,7 @@ namespace ExpenseTracker.Api.Services
     {
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _configuration;
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IBudgetHealthService _budgetHealthService;
         private readonly IBudgetAdvisorService _budgetAdvisorService;
         private readonly ILogger<AIService> _logger;
@@ -27,14 +27,14 @@ namespace ExpenseTracker.Api.Services
         public AIService(
             HttpClient httpClient,
             IConfiguration configuration,
-            ExpenseTrackerDbContext dbContext,
+            IUnitOfWork unitOfWork,
             IBudgetHealthService budgetHealthService,
             IBudgetAdvisorService budgetAdvisorService,
             ILogger<AIService> logger)
         {
             _httpClient = httpClient;
             _configuration = configuration;
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
             _budgetHealthService = budgetHealthService;
             _budgetAdvisorService = budgetAdvisorService;
             _logger = logger;
@@ -82,12 +82,12 @@ namespace ExpenseTracker.Api.Services
             var monthStart = new DateTime(now.Year, now.Month, 1);
             var recentWindowStart = now.AddMonths(-3);
 
-            var receipts = await _dbContext.Receipts
+            var receipts = await _unitOfWork.Receipts.Query()
                 .Where(x => x.UserId == userId)
                 .OrderByDescending(x => x.UploadedAt)
                 .ToListAsync();
 
-            var budgets = await _dbContext.Budgets
+            var budgets = await _unitOfWork.Budgets.Query()
                 .Where(x => x.UserId == userId)
                 .OrderByDescending(x => x.LastReset)
                 .ToListAsync();
@@ -249,7 +249,7 @@ namespace ExpenseTracker.Api.Services
 
         public async Task<List<AiSubscriptionInsightDto>> GetSubscriptionsAsync(int userId)
         {
-            var receipts = await _dbContext.Receipts
+            var receipts = await _unitOfWork.Receipts.Query()
                 .Where(x => x.UserId == userId && x.UploadedAt >= DateTime.UtcNow.AddMonths(-6))
                 .OrderByDescending(x => x.UploadedAt)
                 .ToListAsync();

@@ -15,10 +15,10 @@ namespace ExpenseTracker.Api.Controllers
     [Authorize]
     public class CategoriesController : ControllerBase
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
-        public CategoriesController(ExpenseTrackerDbContext dbContext)
+        private readonly IUnitOfWork _unitOfWork;
+        public CategoriesController(IUnitOfWork unitOfWork)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
         }
 
 
@@ -27,7 +27,7 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
-            var categories = await _dbContext.Categories
+            var categories = await _unitOfWork.Categories.Query()
                 .Where(c => c.UserId == userId)
                 .Select(c => new CategoryDto { Id = c.Id, Name = c.Name })
                 .ToListAsync();
@@ -40,7 +40,7 @@ namespace ExpenseTracker.Api.Controllers
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
 
-            var rules = await _dbContext.VendorCategoryRules
+            var rules = await _unitOfWork.VendorCategoryRules.Query()
                 .Where(rule => rule.UserId == userId)
                 .Include(rule => rule.Category)
                 .OrderBy(rule => rule.VendorPattern)
@@ -66,12 +66,12 @@ namespace ExpenseTracker.Api.Controllers
                 return Unauthorized();
             if (string.IsNullOrWhiteSpace(categoryDto.Name))
                 return BadRequest("Category name is required.");
-            var exists = await _dbContext.Categories.AnyAsync(c => c.UserId == userId && c.Name == categoryDto.Name);
+            var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == userId && c.Name == categoryDto.Name);
             if (exists)
                 return Conflict("Category already exists.");
             var category = new Category { UserId = userId, Name = categoryDto.Name };
-            _dbContext.Categories.Add(category);
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.Categories.AddAsync(category);
+            await _unitOfWork.SaveChangesAsync();
             categoryDto.Id = category.Id;
             return Ok(categoryDto);
         }
@@ -84,15 +84,15 @@ namespace ExpenseTracker.Api.Controllers
                 return Unauthorized();
             if (string.IsNullOrWhiteSpace(categoryDto.Name))
                 return BadRequest("Category name is required.");
-            var category = await _dbContext.Categories.FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId);
+            var category = await _unitOfWork.Categories.Query().FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId);
             if (category == null)
                 return NotFound();
             // Prevent duplicate names
-            var exists = await _dbContext.Categories.AnyAsync(c => c.UserId == userId && c.Name == categoryDto.Name && c.Id != id);
+            var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == userId && c.Name == categoryDto.Name && c.Id != id);
             if (exists)
                 return Conflict("Category already exists.");
             category.Name = categoryDto.Name;
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
             return Ok(new CategoryDto { Id = category.Id, Name = category.Name });
         }
 
@@ -101,11 +101,11 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
-            var category = await _dbContext.Categories.FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId);
+            var category = await _unitOfWork.Categories.Query().FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId);
             if (category == null)
                 return NotFound();
-            _dbContext.Categories.Remove(category);
-            await _dbContext.SaveChangesAsync();
+            _unitOfWork.Categories.Remove(category);
+            await _unitOfWork.SaveChangesAsync();
             return NoContent();
         }
 
@@ -119,12 +119,12 @@ namespace ExpenseTracker.Api.Controllers
             if (string.IsNullOrWhiteSpace(normalizedPattern))
                 return BadRequest("Vendor pattern is required.");
 
-            var category = await _dbContext.Categories
+            var category = await _unitOfWork.Categories.Query()
                 .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == userId);
             if (category == null)
                 return BadRequest("Select a valid category.");
 
-            var exists = await _dbContext.VendorCategoryRules
+            var exists = await _unitOfWork.VendorCategoryRules.Query()
                 .AnyAsync(rule => rule.UserId == userId && rule.VendorPattern.ToLower() == normalizedPattern.ToLower());
             if (exists)
                 return Conflict("A rule for this vendor pattern already exists.");
@@ -137,8 +137,8 @@ namespace ExpenseTracker.Api.Controllers
                 IsActive = ruleDto.IsActive
             };
 
-            _dbContext.VendorCategoryRules.Add(rule);
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.VendorCategoryRules.AddAsync(rule);
+            await _unitOfWork.SaveChangesAsync();
 
             return Ok(new VendorCategoryRuleDto
             {
@@ -161,18 +161,18 @@ namespace ExpenseTracker.Api.Controllers
             if (string.IsNullOrWhiteSpace(normalizedPattern))
                 return BadRequest("Vendor pattern is required.");
 
-            var rule = await _dbContext.VendorCategoryRules
+            var rule = await _unitOfWork.VendorCategoryRules.Query()
                 .Include(existingRule => existingRule.Category)
                 .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == userId);
             if (rule == null)
                 return NotFound();
 
-            var category = await _dbContext.Categories
+            var category = await _unitOfWork.Categories.Query()
                 .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == userId);
             if (category == null)
                 return BadRequest("Select a valid category.");
 
-            var exists = await _dbContext.VendorCategoryRules.AnyAsync(existingRule =>
+            var exists = await _unitOfWork.VendorCategoryRules.Query().AnyAsync(existingRule =>
                 existingRule.UserId == userId &&
                 existingRule.VendorPattern.ToLower() == normalizedPattern.ToLower() &&
                 existingRule.Id != id);
@@ -183,7 +183,7 @@ namespace ExpenseTracker.Api.Controllers
             rule.CategoryId = category.Id;
             rule.IsActive = ruleDto.IsActive;
 
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
 
             return Ok(new VendorCategoryRuleDto
             {
@@ -202,13 +202,13 @@ namespace ExpenseTracker.Api.Controllers
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
 
-            var rule = await _dbContext.VendorCategoryRules
+            var rule = await _unitOfWork.VendorCategoryRules.Query()
                 .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == userId);
             if (rule == null)
                 return NotFound();
 
-            _dbContext.VendorCategoryRules.Remove(rule);
-            await _dbContext.SaveChangesAsync();
+            _unitOfWork.VendorCategoryRules.Remove(rule);
+            await _unitOfWork.SaveChangesAsync();
             return NoContent();
         }
 

@@ -13,20 +13,20 @@ namespace ExpenseTracker.Api.Controllers
     [Authorize(Roles = "Admin")]
     public class AdminController : ControllerBase
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public AdminController(ExpenseTrackerDbContext dbContext)
+        public AdminController(IUnitOfWork unitOfWork)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
         }
 
         [HttpGet("overview")]
         public async Task<ActionResult<AdminOverviewDto>> GetOverview()
         {
-            var totalUsers = await _dbContext.Users.CountAsync();
-            var adminCount = await _dbContext.Users.CountAsync(user => user.Role == "Admin");
-            var receiptCount = await _dbContext.Receipts.CountAsync();
-            var trackedReceiptSpend = await _dbContext.Receipts.SumAsync(receipt => (decimal?)receipt.TotalAmount) ?? 0m;
+            var totalUsers = await _unitOfWork.Users.Query().CountAsync();
+            var adminCount = await _unitOfWork.Users.Query().CountAsync(user => user.Role == "Admin");
+            var receiptCount = await _unitOfWork.Receipts.Query().CountAsync();
+            var trackedReceiptSpend = await _unitOfWork.Receipts.Query().SumAsync(receipt => (decimal?)receipt.TotalAmount) ?? 0m;
 
             return Ok(new AdminOverviewDto
             {
@@ -41,13 +41,13 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("users")]
         public async Task<ActionResult<IEnumerable<AdminUserSummaryDto>>> GetUsers()
         {
-            var users = await _dbContext.Users
+            var users = await _unitOfWork.Users.Query()
                 .AsNoTracking()
                 .OrderByDescending(user => user.Role == "Admin")
                 .ThenBy(user => user.Email)
                 .ToListAsync();
 
-            var receiptSummaries = await _dbContext.Receipts
+            var receiptSummaries = await _unitOfWork.Receipts.Query()
                 .AsNoTracking()
                 .GroupBy(receipt => receipt.UserId)
                 .Select(group => new
@@ -58,7 +58,7 @@ namespace ExpenseTracker.Api.Controllers
                 })
                 .ToDictionaryAsync(item => item.UserId);
 
-            var budgetCounts = await _dbContext.Budgets
+            var budgetCounts = await _unitOfWork.Budgets.Query()
                 .AsNoTracking()
                 .GroupBy(budget => budget.UserId)
                 .Select(group => new
@@ -68,7 +68,7 @@ namespace ExpenseTracker.Api.Controllers
                 })
                 .ToDictionaryAsync(item => item.UserId, item => item.Count);
 
-            var categoryCounts = await _dbContext.Categories
+            var categoryCounts = await _unitOfWork.Categories.Query()
                 .AsNoTracking()
                 .GroupBy(category => category.UserId)
                 .Select(group => new
@@ -112,7 +112,7 @@ namespace ExpenseTracker.Api.Controllers
                 return BadRequest(new { message = "Role must be either Admin or User." });
             }
 
-            var user = await _dbContext.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(userId);
             if (user is null)
             {
                 return NotFound(new { message = "User not found." });
@@ -126,7 +126,7 @@ namespace ExpenseTracker.Api.Controllers
             if (string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase)
                 && normalizedRole == "User")
             {
-                var adminCount = await _dbContext.Users.CountAsync(existingUser => existingUser.Role == "Admin");
+                var adminCount = await _unitOfWork.Users.Query().CountAsync(existingUser => existingUser.Role == "Admin");
                 if (adminCount <= 1)
                 {
                     return BadRequest(new { message = "At least one admin account must remain in the workspace." });
@@ -134,12 +134,12 @@ namespace ExpenseTracker.Api.Controllers
             }
 
             user.Role = normalizedRole;
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
 
-            var receiptCount = await _dbContext.Receipts.CountAsync(receipt => receipt.UserId == user.Id);
-            var budgetCount = await _dbContext.Budgets.CountAsync(budget => budget.UserId == user.Id);
-            var categoryCount = await _dbContext.Categories.CountAsync(category => category.UserId == user.Id);
-            var latestReceiptAt = await _dbContext.Receipts
+            var receiptCount = await _unitOfWork.Receipts.Query().CountAsync(receipt => receipt.UserId == user.Id);
+            var budgetCount = await _unitOfWork.Budgets.Query().CountAsync(budget => budget.UserId == user.Id);
+            var categoryCount = await _unitOfWork.Categories.Query().CountAsync(category => category.UserId == user.Id);
+            var latestReceiptAt = await _unitOfWork.Receipts.Query()
                 .Where(receipt => receipt.UserId == user.Id)
                 .MaxAsync(receipt => (DateTime?)receipt.UploadedAt);
 

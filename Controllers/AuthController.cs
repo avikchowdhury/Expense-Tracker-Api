@@ -18,20 +18,20 @@ namespace ExpenseTracker.Api.Controllers
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IJwtService _jwtService;
         private readonly IMemoryCache _cache;
         private readonly IEmailService _emailService;
         private readonly IWebHostEnvironment _environment;
 
         public AuthController(
-            ExpenseTrackerDbContext dbContext,
+            IUnitOfWork unitOfWork,
             IJwtService jwtService,
             IMemoryCache cache,
             IEmailService emailService,
             IWebHostEnvironment environment)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
             _jwtService = jwtService;
             _cache = cache;
             _emailService = emailService;
@@ -47,7 +47,7 @@ namespace ExpenseTracker.Api.Controllers
                 return BadRequest(new { message = "Enter a valid email address." });
             }
 
-            if (await _dbContext.Users.AnyAsync(u => u.Email == email))
+            if (await _unitOfWork.Users.Query().AnyAsync(u => u.Email == email))
             {
                 return BadRequest(new { message = "Email already in use" });
             }
@@ -58,8 +58,8 @@ namespace ExpenseTracker.Api.Controllers
                 PasswordHash = HashPassword(request.Password)
             };
 
-            _dbContext.Users.Add(user);
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.Users.AddAsync(user);
+            await _unitOfWork.SaveChangesAsync();
 
             var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, NormalizeRole(user.Role));
             return Ok(tokenResponse);
@@ -69,7 +69,7 @@ namespace ExpenseTracker.Api.Controllers
         public async Task<IActionResult> Login([FromBody] AuthLoginDto request)
         {
             var email = NormalizeEmail(request.Email);
-            var user = await _dbContext.Users.FirstOrDefaultAsync(x => x.Email == email);
+            var user = await _unitOfWork.Users.Query().FirstOrDefaultAsync(x => x.Email == email);
             if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
             {
                 return Unauthorized(new { message = "Invalid credentials" });
@@ -85,7 +85,7 @@ namespace ExpenseTracker.Api.Controllers
             var email = NormalizeEmail(request.Email);
             if (!IsValidEmail(email))
                 return BadRequest(new { message = "Enter a valid email address." });
-            if (await _dbContext.Users.AnyAsync(u => u.Email == email))
+            if (await _unitOfWork.Users.Query().AnyAsync(u => u.Email == email))
                 return BadRequest(new { message = "Email already in use" });
             var otp = new Random().Next(100000, 999999).ToString();
             _cache.Set($"otp_{email}", otp, TimeSpan.FromMinutes(10));
@@ -118,7 +118,7 @@ namespace ExpenseTracker.Api.Controllers
             var email = NormalizeEmail(request.Email);
             if (!IsValidEmail(email))
                 return BadRequest(new { message = "Enter a valid email address." });
-            if (await _dbContext.Users.AnyAsync(u => u.Email == email))
+            if (await _unitOfWork.Users.Query().AnyAsync(u => u.Email == email))
                 return BadRequest(new { message = "Email already in use" });
             if (string.IsNullOrWhiteSpace(request.Password))
                 return BadRequest(new { message = "Password is required." });
@@ -129,8 +129,8 @@ namespace ExpenseTracker.Api.Controllers
                 Email = email,
                 PasswordHash = HashPassword(request.Password)
             };
-            _dbContext.Users.Add(user);
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.Users.AddAsync(user);
+            await _unitOfWork.SaveChangesAsync();
             _cache.Remove($"otp_{email}");
             var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, NormalizeRole(user.Role));
             return Ok(tokenResponse);
@@ -146,7 +146,7 @@ namespace ExpenseTracker.Api.Controllers
                 return Unauthorized();
             }
 
-            var user = await _dbContext.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(userId);
             if (user is null)
             {
                 return NotFound(new { message = "User not found." });
@@ -157,14 +157,14 @@ namespace ExpenseTracker.Api.Controllers
                 return Ok(_jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, "Admin"));
             }
 
-            var adminExists = await _dbContext.Users.AnyAsync(existingUser => existingUser.Role == "Admin");
+            var adminExists = await _unitOfWork.Users.Query().AnyAsync(existingUser => existingUser.Role == "Admin");
             if (adminExists)
             {
                 return BadRequest(new { message = "An admin account already exists. Ask an admin to grant access." });
             }
 
             user.Role = "Admin";
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
 
             var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, "Admin");
             return Ok(tokenResponse);

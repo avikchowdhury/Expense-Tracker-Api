@@ -19,12 +19,12 @@ namespace ExpenseTracker.Api.Controllers
     [Authorize]
     public class ProfileController : ControllerBase
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly FileStoragePaths _storagePaths;
 
-        public ProfileController(ExpenseTrackerDbContext dbContext, FileStoragePaths storagePaths)
+        public ProfileController(IUnitOfWork unitOfWork, FileStoragePaths storagePaths)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
             _storagePaths = storagePaths;
         }
 
@@ -35,7 +35,7 @@ namespace ExpenseTracker.Api.Controllers
             var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdClaim, out var userId))
                 return Unauthorized();
-            var user = await _dbContext.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(userId);
             if (user == null) return NotFound();
             return Ok(new
             {
@@ -55,7 +55,7 @@ namespace ExpenseTracker.Api.Controllers
             var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdClaim, out var userId))
                 return Unauthorized();
-            var user = await _dbContext.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(userId);
             if (user == null) return NotFound();
             if (dto.File == null || dto.File.Length == 0) return BadRequest("No file uploaded");
             var ext = System.IO.Path.GetExtension(dto.File.FileName);
@@ -67,7 +67,7 @@ namespace ExpenseTracker.Api.Controllers
                 await dto.File.CopyToAsync(stream);
             }
             user.AvatarUrl = $"/avatars/{fileName}";
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
             return Ok(new { AvatarUrl = BuildAvatarUrl(user.AvatarUrl) });
         }
 
@@ -77,7 +77,7 @@ namespace ExpenseTracker.Api.Controllers
             var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdClaim, out var userId))
                 return Unauthorized();
-            var user = await _dbContext.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(userId);
             if (user == null) return NotFound();
             if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email;
             if (dto.FullName is not null) user.FullName = string.IsNullOrWhiteSpace(dto.FullName) ? null : dto.FullName.Trim();
@@ -94,7 +94,7 @@ namespace ExpenseTracker.Api.Controllers
                 user.Phone = normalizedPhone;
             }
 
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
             return Ok(new
             {
                 user.Email,
@@ -112,12 +112,12 @@ namespace ExpenseTracker.Api.Controllers
             var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdClaim, out var userId))
                 return Unauthorized();
-            var user = await _dbContext.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(userId);
             if (user == null) return NotFound();
             if (HashPassword(dto.OldPassword) != user.PasswordHash)
                 return BadRequest(new { message = "Old password is incorrect." });
             user.PasswordHash = HashPassword(dto.NewPassword);
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
             return Ok();
         }
 

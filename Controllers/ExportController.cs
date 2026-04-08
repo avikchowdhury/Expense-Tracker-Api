@@ -15,10 +15,10 @@ namespace ExpenseTracker.Api.Controllers
     [Authorize]
     public class ExportController : ControllerBase
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
-        public ExportController(ExpenseTrackerDbContext dbContext)
+        private readonly IUnitOfWork _unitOfWork;
+        public ExportController(IUnitOfWork unitOfWork)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
         }
 
         [HttpGet("excel")]
@@ -26,7 +26,7 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
-            var expenses = await _dbContext.Expenses.Where(e => e.UserId == userId).ToListAsync();
+            var expenses = await _unitOfWork.Expenses.Query().Where(e => e.UserId == userId).ToListAsync();
             using var package = new ExcelPackage();
             var ws = package.Workbook.Worksheets.Add("Expenses");
             ws.Cells[1, 1].Value = "Date";

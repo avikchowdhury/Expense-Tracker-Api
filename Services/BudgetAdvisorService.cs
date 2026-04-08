@@ -6,11 +6,11 @@ namespace ExpenseTracker.Api.Services
 {
     public class BudgetAdvisorService : IBudgetAdvisorService
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public BudgetAdvisorService(ExpenseTrackerDbContext dbContext)
+        public BudgetAdvisorService(IUnitOfWork unitOfWork)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
         }
 
         public async Task<BudgetAdvisorSnapshotDto> GetBudgetAdvisorAsync(int userId, DateTime? referenceUtc = null)
@@ -24,11 +24,11 @@ namespace ExpenseTracker.Api.Services
                 .ToList();
             var historyStart = previousMonths.First();
 
-            var budgets = await _dbContext.Budgets
+            var budgets = await _unitOfWork.Budgets.Query()
                 .Where(x => x.UserId == userId)
                 .ToListAsync();
 
-            var expenses = await _dbContext.Expenses
+            var expenses = await _unitOfWork.Expenses.Query()
                 .Where(x => x.UserId == userId && x.Date >= historyStart && x.Date < monthEnd)
                 .Include(x => x.Category)
                 .ToListAsync();

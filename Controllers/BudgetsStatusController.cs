@@ -13,10 +13,10 @@ namespace ExpenseTracker.Api.Controllers
     [Authorize]
     public class BudgetsStatusController : ControllerBase
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
-        public BudgetsStatusController(ExpenseTrackerDbContext dbContext)
+        private readonly IUnitOfWork _unitOfWork;
+        public BudgetsStatusController(IUnitOfWork unitOfWork)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
         }
 
         [HttpGet]
@@ -24,7 +24,7 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
-            var budgets = await _dbContext.Budgets.Where(b => b.UserId == userId).ToListAsync();
+            var budgets = await _unitOfWork.Budgets.Query().Where(b => b.UserId == userId).ToListAsync();
             var alerts = budgets.Where(b => b.CurrentSpent > b.MonthlyLimit).Select(b => $"Budget exceeded for {b.Category}").ToList();
             return Ok(new { budgets, alerts });
         }

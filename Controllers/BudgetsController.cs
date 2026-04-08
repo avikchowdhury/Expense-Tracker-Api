@@ -17,16 +17,16 @@ namespace ExpenseTracker.Api.Controllers
     [Authorize]
     public class BudgetsController : ControllerBase
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IBudgetHealthService _budgetHealthService;
         private readonly IBudgetAdvisorService _budgetAdvisorService;
 
         public BudgetsController(
-            ExpenseTrackerDbContext dbContext,
+            IUnitOfWork unitOfWork,
             IBudgetHealthService budgetHealthService,
             IBudgetAdvisorService budgetAdvisorService)
         {
-            _dbContext = dbContext;
+            _unitOfWork = unitOfWork;
             _budgetHealthService = budgetHealthService;
             _budgetAdvisorService = budgetAdvisorService;
         }
@@ -37,7 +37,7 @@ namespace ExpenseTracker.Api.Controllers
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
 
-            var budget = await _dbContext.Budgets.FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
+            var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
 
             if (budget == null) return NotFound();
 
@@ -99,7 +99,7 @@ namespace ExpenseTracker.Api.Controllers
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
 
-            var budgets = await _dbContext.Budgets
+            var budgets = await _unitOfWork.Budgets.Query()
                 .Where(x => x.UserId == userId)
                 .ToListAsync();
 
@@ -129,8 +129,8 @@ namespace ExpenseTracker.Api.Controllers
                 LastReset = DateTime.UtcNow
             };
 
-            _dbContext.Budgets.Add(budget);
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.Budgets.AddAsync(budget);
+            await _unitOfWork.SaveChangesAsync();
 
             request.Id = budget.Id;
             request.UserId = userId;
@@ -146,7 +146,7 @@ namespace ExpenseTracker.Api.Controllers
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
 
-            var budget = await _dbContext.Budgets.FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
+            var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
             if (budget == null) return NotFound();
 
             budget.Category = request.Category;
@@ -154,7 +154,7 @@ namespace ExpenseTracker.Api.Controllers
             budget.CurrentSpent = request.CurrentSpent;
             // Always set LastReset to current UTC time on update
             budget.LastReset = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
 
             return Ok(new BudgetDto
             {
@@ -173,11 +173,11 @@ namespace ExpenseTracker.Api.Controllers
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
 
-            var budget = await _dbContext.Budgets.FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
+            var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
             if (budget == null) return NotFound();
 
-            _dbContext.Budgets.Remove(budget);
-            await _dbContext.SaveChangesAsync();
+            _unitOfWork.Budgets.Remove(budget);
+            await _unitOfWork.SaveChangesAsync();
             return NoContent();
         }
     }
