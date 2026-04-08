@@ -8,6 +8,7 @@ namespace ExpenseTracker.Api.Services
     {
         Task<ReceiptParseResult> ParseReceiptAsync(IFormFile file);
         Task<AiInsightSnapshotDto> GetInsightsAsync(int userId);
+        Task<List<AiSubscriptionInsightDto>> GetSubscriptionsAsync(int userId);
         Task<AiChatResponseDto> ChatAsync(int userId, string message);
     }
 

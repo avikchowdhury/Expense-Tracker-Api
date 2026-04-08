@@ -45,6 +45,18 @@ namespace ExpenseTracker.Api.Controllers
             return Ok(result);
         }
 
+        [HttpGet("subscriptions")]
+        public async Task<IActionResult> GetSubscriptions()
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            {
+                return Unauthorized();
+            }
+
+            var result = await _aiService.GetSubscriptionsAsync(userId);
+            return Ok(result);
+        }
+
         [HttpPost("chat")]
         public async Task<IActionResult> Chat([FromBody] AiChatRequestDto request)
         {
