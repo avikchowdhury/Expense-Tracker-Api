@@ -23,5 +23,10 @@ namespace ExpenseTracker.Api.Models
 
         // Avatar/profile picture URL
         public string? AvatarUrl { get; set; }
+
+        // Additional profile details
+        public string? FullName { get; set; }
+        public string? Phone { get; set; }
+        public string? Address { get; set; }
     }
 }

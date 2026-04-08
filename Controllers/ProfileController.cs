@@ -10,6 +10,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using System;
+using ExpenseTracker.Api.Dtos;
 
 namespace ExpenseTracker.Api.Controllers
 {
@@ -40,7 +41,10 @@ namespace ExpenseTracker.Api.Controllers
             {
                 user.Email,
                 user.Role,
-                AvatarUrl = BuildAvatarUrl(user.AvatarUrl)
+                AvatarUrl = BuildAvatarUrl(user.AvatarUrl),
+                user.FullName,
+                user.Phone,
+                user.Address
             });
         }
 
@@ -76,12 +80,18 @@ namespace ExpenseTracker.Api.Controllers
             var user = await _dbContext.Users.FindAsync(userId);
             if (user == null) return NotFound();
             if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email;
+            if (!string.IsNullOrWhiteSpace(dto.FullName)) user.FullName = dto.FullName;
+            if (!string.IsNullOrWhiteSpace(dto.Phone)) user.Phone = dto.Phone;
+            if (!string.IsNullOrWhiteSpace(dto.Address)) user.Address = dto.Address;
             await _dbContext.SaveChangesAsync();
             return Ok(new
             {
                 user.Email,
                 user.Role,
-                AvatarUrl = BuildAvatarUrl(user.AvatarUrl)
+                AvatarUrl = BuildAvatarUrl(user.AvatarUrl),
+                user.FullName,
+                user.Phone,
+                user.Address
             });
         }
 
@@ -130,10 +140,5 @@ namespace ExpenseTracker.Api.Controllers
     {
         public string OldPassword { get; set; } = string.Empty;
         public string NewPassword { get; set; } = string.Empty;
-    }
-
-    public class UpdateProfileDto
-    {
-        public string? Email { get; set; }
     }
 }
