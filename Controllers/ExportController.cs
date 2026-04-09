@@ -24,6 +24,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("excel")]
         public async Task<IActionResult> ExportToExcel()
         {
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
             var expenses = await _unitOfWork.Expenses.Query().Where(e => e.UserId == userId).ToListAsync();
@@ -35,7 +36,7 @@ namespace ExpenseTracker.Api.Controllers
             ws.Cells[1, 4].Value = "Description";
             for (int i = 0; i < expenses.Count; i++)
             {
-                ws.Cells[i + 2, 1].Value = expenses[i].Date;
+                ws.Cells[i + 2, 1].Value = expenses[i].Date.ToString("yyyy-MM-dd");
                 ws.Cells[i + 2, 2].Value = expenses[i].Amount;
                 ws.Cells[i + 2, 3].Value = expenses[i].Category;
                 ws.Cells[i + 2, 4].Value = expenses[i].Description;
