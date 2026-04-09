@@ -52,7 +52,7 @@ namespace ExpenseTracker.Api.Extensions
 
             services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
             var jwtConfig = configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
-            var key = Encoding.UTF8.GetBytes(jwtConfig.Secret ?? "supersecretkey1234567890");
+            var key = Encoding.UTF8.GetBytes(jwtConfig.Secret);
 
             services.AddAuthentication(options =>
             {
