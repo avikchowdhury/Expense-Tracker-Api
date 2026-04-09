@@ -46,6 +46,35 @@ namespace ExpenseTracker.Api.Controllers
             return Ok(dto);
         }
 
+        [HttpPost("quick-add")]
+        public async Task<IActionResult> QuickAddReceipt([FromBody] QuickAddReceiptDto request)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+            if (string.IsNullOrWhiteSpace(request.Vendor) || request.Amount <= 0)
+                return BadRequest("Vendor and a positive amount are required.");
+
+            var date = request.Date.HasValue
+                ? request.Date.Value
+                : DateTime.UtcNow;
+
+            var receipt = await _receiptService.QuickAddReceiptAsync(
+                userId, request.Vendor, request.Amount, request.Category ?? "Uncategorized", date);
+
+            return Ok(new ReceiptDto
+            {
+                Id = receipt.Id,
+                UserId = receipt.UserId,
+                UploadedAt = receipt.UploadedAt,
+                FileName = receipt.FileName,
+                BlobUrl = receipt.BlobUrl,
+                TotalAmount = receipt.TotalAmount,
+                Vendor = receipt.Vendor,
+                Category = receipt.Category,
+                ParsedContentJson = receipt.ParsedContentJson
+            });
+        }
+
 
         [HttpGet]
         public async Task<IActionResult> GetReceipts([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null, [FromQuery] string? category = null, [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null)

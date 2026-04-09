@@ -58,6 +58,28 @@ namespace ExpenseTracker.Api.Services
             return receipt;
         }
 
+        public async Task<Receipt> QuickAddReceiptAsync(int userId, string vendor, decimal amount, string category, DateTime date, CancellationToken cancellationToken = default)
+        {
+            var receipt = new Receipt
+            {
+                UserId = userId,
+                FileName = $"quick-add-{Guid.NewGuid():N}.txt",
+                UploadedAt = date.Kind == DateTimeKind.Utc ? date : DateTime.SpecifyKind(date, DateTimeKind.Utc),
+                Vendor = vendor,
+                TotalAmount = amount,
+                Category = string.IsNullOrWhiteSpace(category) ? "Uncategorized" : category,
+                ParsedContentJson = "{\"source\":\"quick-add\"}"
+            };
+
+            await ApplyVendorRuleAsync(receipt, cancellationToken);
+
+            await _unitOfWork.Receipts.AddAsync(receipt, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await SyncExpenseFromReceiptAsync(receipt, cancellationToken);
+
+            return receipt;
+        }
+
         public async Task<Receipt?> GetReceiptByIdAsync(int userId, int receiptId)
         {
             return await _unitOfWork.Receipts.Query()
