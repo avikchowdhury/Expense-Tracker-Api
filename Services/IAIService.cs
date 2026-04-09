@@ -12,6 +12,11 @@ namespace ExpenseTracker.Api.Services
         Task<AiChatResponseDto> ChatAsync(int userId, string message);
         Task<List<SpendingAnomalyDto>> GetSpendingAnomaliesAsync(int userId);
         Task<MonthlySummaryDto> GetMonthlySummaryAsync(int userId);
+        Task<SpendingForecastDto> GetSpendingForecastAsync(int userId);
+        Task<List<NotificationDto>> GetNotificationsAsync(int userId);
+        Task<ParseTextResultDto> ParseTextExpenseAsync(string text);
+        Task<VendorAnalysisDto> GetVendorAnalysisAsync(int userId);
+        Task<DuplicateCheckResultDto> CheckDuplicateReceiptAsync(int userId, string vendor, decimal amount, string date);
     }
 
     public class ReceiptParseResult

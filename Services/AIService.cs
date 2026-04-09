@@ -840,20 +840,19 @@ namespace ExpenseTracker.Api.Services
             var monthStart = new DateTime(now.Year, now.Month, 1);
             var threeMonthsBack = now.AddMonths(-3);
 
-            var expenses = await _unitOfWork.Expenses.Query()
-                .Where(e => e.UserId == userId && e.Date >= threeMonthsBack)
-                .Include(e => e.Category)
+            var receipts = await _unitOfWork.Receipts.Query()
+                .Where(r => r.UserId == userId && r.UploadedAt >= threeMonthsBack)
                 .ToListAsync();
 
-            var thisMonthByCategory = expenses
-                .Where(e => e.Date >= monthStart)
-                .GroupBy(e => e.Category?.Name ?? "Uncategorized")
-                .ToDictionary(g => g.Key, g => g.Sum(e => e.Amount));
+            var thisMonthByCategory = receipts
+                .Where(r => r.UploadedAt >= monthStart && !string.IsNullOrWhiteSpace(r.Category))
+                .GroupBy(r => r.Category!)
+                .ToDictionary(g => g.Key, g => g.Sum(r => r.TotalAmount));
 
-            var priorByCategory = expenses
-                .Where(e => e.Date < monthStart)
-                .GroupBy(e => e.Category?.Name ?? "Uncategorized")
-                .ToDictionary(g => g.Key, g => g.Sum(e => e.Amount) / 3m);
+            var priorByCategory = receipts
+                .Where(r => r.UploadedAt < monthStart && !string.IsNullOrWhiteSpace(r.Category))
+                .GroupBy(r => r.Category!)
+                .ToDictionary(g => g.Key, g => g.Sum(r => r.TotalAmount) / 3m);
 
             var anomalies = new List<SpendingAnomalyDto>();
 
@@ -911,6 +910,331 @@ namespace ExpenseTracker.Api.Services
                 ReceiptCount = receipts.Count,
                 AiSummary = aiSummary,
                 Anomalies = anomalies
+            };
+        }
+
+        public async Task<SpendingForecastDto> GetSpendingForecastAsync(int userId)
+        {
+            var now = DateTime.UtcNow;
+            var monthStart = new DateTime(now.Year, now.Month, 1);
+            var daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
+            var daysElapsed = Math.Max(1, (now - monthStart).Days + 1);
+            var daysRemaining = daysInMonth - daysElapsed;
+
+            var receipts = await _unitOfWork.Receipts.Query()
+                .Where(r => r.UserId == userId && r.UploadedAt >= monthStart)
+                .OrderBy(r => r.UploadedAt)
+                .ToListAsync();
+
+            var currentSpend = receipts.Sum(r => r.TotalAmount);
+            var dailyAverage = currentSpend / daysElapsed;
+            var projectedMonthEnd = currentSpend + (dailyAverage * daysRemaining);
+
+            var budgetAdvisor = await _budgetAdvisorService.GetBudgetAdvisorAsync(userId, now);
+            var trend = budgetAdvisor.TotalBudget > 0
+                ? projectedMonthEnd >= budgetAdvisor.TotalBudget * 1.0m
+                    ? "critical"
+                    : projectedMonthEnd >= budgetAdvisor.TotalBudget * 0.8m
+                        ? "warning"
+                        : "on-track"
+                : "on-track";
+
+            var fallbackNarrative = trend == "critical"
+                ? $"You're on pace to spend {projectedMonthEnd:C} this month. That exceeds your budget — consider pausing discretionary expenses."
+                : trend == "warning"
+                    ? $"Projected month-end spend of {projectedMonthEnd:C} is approaching your limit. Watch your top categories."
+                    : $"Spending looks controlled at {dailyAverage:C}/day. Projected month-end total: {projectedMonthEnd:C}.";
+
+            var snapshot = await GetInsightsAsync(userId);
+            var narrative = await TryGenerateModelReplyAsync(
+                $"Forecast: currently at {currentSpend:C} after {daysElapsed} days. Projected end: {projectedMonthEnd:C}. Budget: {budgetAdvisor.TotalBudget:C}. Give a brief 1-sentence spending forecast advice.",
+                snapshot,
+                fallbackNarrative);
+
+            var dailyByDate = receipts
+                .GroupBy(r => r.UploadedAt.Date)
+                .ToDictionary(g => g.Key, g => g.Sum(r => r.TotalAmount));
+
+            var breakdown = new List<DailySpendPointDto>();
+            for (var d = monthStart.Date; d <= now.Date; d = d.AddDays(1))
+            {
+                breakdown.Add(new DailySpendPointDto
+                {
+                    Date = d.ToString("yyyy-MM-dd"),
+                    Amount = dailyByDate.TryGetValue(d, out var amt) ? Math.Round(amt, 2) : 0,
+                    IsProjected = false
+                });
+            }
+            for (var d = now.Date.AddDays(1); d <= monthStart.AddMonths(1).AddDays(-1); d = d.AddDays(1))
+            {
+                breakdown.Add(new DailySpendPointDto
+                {
+                    Date = d.ToString("yyyy-MM-dd"),
+                    Amount = Math.Round(dailyAverage, 2),
+                    IsProjected = true
+                });
+            }
+
+            return new SpendingForecastDto
+            {
+                CurrentSpend = Math.Round(currentSpend, 2),
+                ProjectedMonthEnd = Math.Round(projectedMonthEnd, 2),
+                DailyAverage = Math.Round(dailyAverage, 2),
+                DaysElapsed = daysElapsed,
+                DaysRemaining = daysRemaining,
+                Trend = trend,
+                AiNarrative = narrative,
+                DailyBreakdown = breakdown
+            };
+        }
+
+        public async Task<List<NotificationDto>> GetNotificationsAsync(int userId)
+        {
+            var notifications = new List<NotificationDto>();
+            var now = DateTime.UtcNow;
+
+            var alerts = (await GetInsightsAsync(userId)).Alerts;
+            foreach (var alert in alerts.Take(5))
+            {
+                notifications.Add(new NotificationDto
+                {
+                    Id = $"alert-{alert.Title.GetHashCode():x}",
+                    Title = alert.Title,
+                    Message = alert.Detail,
+                    Type = alert.Severity == "critical" || alert.Severity == "warning" ? "budget" : "info",
+                    Severity = alert.Severity,
+                    GeneratedAt = now
+                });
+            }
+
+            var anomalies = await GetSpendingAnomaliesAsync(userId);
+            foreach (var anomaly in anomalies.Where(a => a.Severity != "normal").Take(3))
+            {
+                notifications.Add(new NotificationDto
+                {
+                    Id = $"anomaly-{anomaly.Category.GetHashCode():x}",
+                    Title = $"Spending spike: {anomaly.Category}",
+                    Message = anomaly.Message,
+                    Type = "anomaly",
+                    Severity = anomaly.Severity,
+                    GeneratedAt = now
+                });
+            }
+
+            var subscriptions = await GetSubscriptionsAsync(userId);
+            foreach (var sub in subscriptions.Where(s => s.NextExpectedDate.HasValue && s.NextExpectedDate.Value <= now.AddDays(7)).Take(2))
+            {
+                notifications.Add(new NotificationDto
+                {
+                    Id = $"sub-{sub.Vendor.GetHashCode():x}",
+                    Title = $"Upcoming charge: {sub.Vendor}",
+                    Message = $"Expected around {sub.NextExpectedDate:MMM d} for approx. {sub.AverageAmount:C}.",
+                    Type = "subscription",
+                    Severity = "info",
+                    GeneratedAt = now
+                });
+            }
+
+            return notifications
+                .OrderByDescending(n => GetSeverityRank(n.Severity))
+                .ThenByDescending(n => n.GeneratedAt)
+                .ToList();
+        }
+
+        public async Task<ParseTextResultDto> ParseTextExpenseAsync(string text)
+        {
+            var fallback = new ParseTextResultDto
+            {
+                Vendor = "Unknown",
+                Amount = 0,
+                Category = "General",
+                Date = DateTime.UtcNow.ToString("yyyy-MM-dd"),
+                Parsed = false,
+                RawText = text
+            };
+
+            if (string.IsNullOrWhiteSpace(text))
+                return fallback;
+
+            var apiKey = _configuration["OpenAI:ApiKey"];
+            var model = _configuration["OpenAI:Model"] ?? "gpt-5-mini";
+            var endpoint = _configuration["OpenAI:ResponsesEndpoint"];
+
+            if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(endpoint))
+                return TryParseTextLocally(text);
+
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                var requestBody = new
+                {
+                    model,
+                    reasoning = new { effort = "low" },
+                    instructions = "You are a receipt parser. Extract vendor name, amount (number only), category, and date from the user's text. Return ONLY a JSON object with keys: vendor, amount (decimal), category, date (yyyy-MM-dd). If a field is unclear, use reasonable defaults: vendor='Unknown', amount=0, category='General', date=today. Do not include explanation.",
+                    input = $"Parse this expense: {text}\nToday is {DateTime.UtcNow:yyyy-MM-dd}"
+                };
+
+                request.Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+                using var response = await _httpClient.SendAsync(request);
+
+                if (!response.IsSuccessStatusCode)
+                    return TryParseTextLocally(text);
+
+                var json = await response.Content.ReadAsStringAsync();
+                var rawText = ExtractResponseText(json);
+                if (string.IsNullOrWhiteSpace(rawText))
+                    return TryParseTextLocally(text);
+
+                var startIdx = rawText.IndexOf('{');
+                var endIdx = rawText.LastIndexOf('}');
+                if (startIdx < 0 || endIdx < 0)
+                    return TryParseTextLocally(text);
+
+                var jsonSlice = rawText[startIdx..(endIdx + 1)];
+                using var doc = JsonDocument.Parse(jsonSlice);
+                var root = doc.RootElement;
+
+                return new ParseTextResultDto
+                {
+                    Vendor = root.TryGetProperty("vendor", out var v) ? v.GetString() ?? "Unknown" : "Unknown",
+                    Amount = root.TryGetProperty("amount", out var a) ? a.GetDecimal() : 0,
+                    Category = root.TryGetProperty("category", out var c) ? c.GetString() ?? "General" : "General",
+                    Date = root.TryGetProperty("date", out var d) ? d.GetString() ?? DateTime.UtcNow.ToString("yyyy-MM-dd") : DateTime.UtcNow.ToString("yyyy-MM-dd"),
+                    Parsed = true,
+                    RawText = text
+                };
+            }
+            catch
+            {
+                return TryParseTextLocally(text);
+            }
+        }
+
+        private static ParseTextResultDto TryParseTextLocally(string text)
+        {
+            var amountMatch = System.Text.RegularExpressions.Regex.Match(text, @"\$?([\d,]+\.?\d*)");
+            var amount = amountMatch.Success && decimal.TryParse(amountMatch.Groups[1].Value.Replace(",", ""), out var parsedAmount)
+                ? parsedAmount : 0m;
+
+            return new ParseTextResultDto
+            {
+                Vendor = "Unknown",
+                Amount = amount,
+                Category = "General",
+                Date = DateTime.UtcNow.ToString("yyyy-MM-dd"),
+                Parsed = amount > 0,
+                RawText = text
+            };
+        }
+
+        public async Task<VendorAnalysisDto> GetVendorAnalysisAsync(int userId)
+        {
+            var now = DateTime.UtcNow;
+            var monthStart = new DateTime(now.Year, now.Month, 1);
+            var priorMonthStart = monthStart.AddMonths(-1);
+
+            var receipts = await _unitOfWork.Receipts.Query()
+                .Where(r => r.UserId == userId && r.UploadedAt >= priorMonthStart)
+                .ToListAsync();
+
+            var thisMonth = receipts.Where(r => r.UploadedAt >= monthStart).ToList();
+            var priorMonth = receipts.Where(r => r.UploadedAt < monthStart).ToList();
+
+            var priorByVendor = priorMonth
+                .Where(r => !string.IsNullOrWhiteSpace(r.Vendor))
+                .GroupBy(r => r.Vendor!.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Sum(r => r.TotalAmount), StringComparer.OrdinalIgnoreCase);
+
+            var vendors = thisMonth
+                .Where(r => !string.IsNullOrWhiteSpace(r.Vendor))
+                .GroupBy(r => r.Vendor!.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var total = g.Sum(r => r.TotalAmount);
+                    var count = g.Count();
+                    priorByVendor.TryGetValue(g.Key, out var prior);
+                    decimal? changePct = prior > 0 ? ((total - prior) / prior) * 100m : null;
+                    var trend = prior <= 0 ? "new" : changePct >= 20 ? "up" : changePct <= -20 ? "down" : "steady";
+                    return new VendorSummaryDto
+                    {
+                        Vendor = g.Key,
+                        TotalSpend = Math.Round(total, 2),
+                        VisitCount = count,
+                        AverageTransaction = Math.Round(total / count, 2),
+                        ChangePercent = changePct.HasValue ? Math.Round(changePct.Value, 1) : null,
+                        Trend = trend
+                    };
+                })
+                .OrderByDescending(v => v.TotalSpend)
+                .Take(10)
+                .ToList();
+
+            var topVendor = vendors.FirstOrDefault();
+            var newVendors = vendors.Count(v => v.Trend == "new");
+            var fallback = topVendor == null
+                ? "No vendor data available yet. Upload receipts to see vendor analysis."
+                : $"Your top vendor is {topVendor.Vendor} at {topVendor.TotalSpend:C} this month. {(newVendors > 0 ? $"{newVendors} new vendors appeared this month." : "Vendor mix is consistent with last month.")}";
+
+            var snapshot = await GetInsightsAsync(userId);
+            var narrative = await TryGenerateModelReplyAsync(
+                $"Vendor analysis for {now:MMMM}: top vendor is {topVendor?.Vendor ?? "none"} ({topVendor?.TotalSpend:C}). {newVendors} new vendors. Give one sentence of vendor spending observation.",
+                snapshot,
+                fallback);
+
+            return new VendorAnalysisDto
+            {
+                Month = now.ToString("MMMM yyyy"),
+                TopVendors = vendors,
+                AiObservation = narrative
+            };
+        }
+
+        public async Task<DuplicateCheckResultDto> CheckDuplicateReceiptAsync(int userId, string vendor, decimal amount, string date)
+        {
+            if (!DateTime.TryParse(date, out var parsedDate))
+                parsedDate = DateTime.UtcNow;
+
+            var windowStart = parsedDate.AddDays(-7);
+            var windowEnd = parsedDate.AddDays(1);
+
+            var candidates = await _unitOfWork.Receipts.Query()
+                .Where(r => r.UserId == userId
+                    && r.UploadedAt >= windowStart
+                    && r.UploadedAt <= windowEnd)
+                .ToListAsync();
+
+            var matches = candidates
+                .Where(r =>
+                    string.Equals(r.Vendor?.Trim(), vendor?.Trim(), StringComparison.OrdinalIgnoreCase)
+                    && Math.Abs(r.TotalAmount - amount) < 0.01m)
+                .Select(r => new ReceiptMatchDto
+                {
+                    Id = r.Id,
+                    Vendor = r.Vendor ?? "Unknown",
+                    Amount = r.TotalAmount,
+                    Date = r.UploadedAt.ToString("yyyy-MM-dd"),
+                    MatchReason = "Same vendor and amount within 7 days"
+                })
+                .ToList();
+
+            if (matches.Count > 0)
+            {
+                return new DuplicateCheckResultDto
+                {
+                    IsDuplicate = true,
+                    Warning = $"A receipt from {vendor} for {amount:C} was already uploaded within the last 7 days.",
+                    PotentialMatches = matches
+                };
+            }
+
+            return new DuplicateCheckResultDto
+            {
+                IsDuplicate = false,
+                Warning = string.Empty,
+                PotentialMatches = new List<ReceiptMatchDto>()
             };
         }
     }

@@ -93,5 +93,45 @@ namespace ExpenseTracker.Api.Controllers
             var result = await _aiService.GetMonthlySummaryAsync(userId);
             return Ok(result);
         }
+
+        [HttpGet("forecast")]
+        public async Task<IActionResult> GetForecast()
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _aiService.GetSpendingForecastAsync(userId);
+            return Ok(result);
+        }
+
+        [HttpPost("parse-text")]
+        public async Task<IActionResult> ParseText([FromBody] Dtos.ParseTextRequestDto request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Text))
+                return BadRequest(new { message = "Text is required." });
+
+            var result = await _aiService.ParseTextExpenseAsync(request.Text);
+            return Ok(result);
+        }
+
+        [HttpGet("vendor-analysis")]
+        public async Task<IActionResult> GetVendorAnalysis()
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _aiService.GetVendorAnalysisAsync(userId);
+            return Ok(result);
+        }
+
+        [HttpPost("check-duplicate")]
+        public async Task<IActionResult> CheckDuplicate([FromBody] Dtos.DuplicateCheckRequestDto request)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _aiService.CheckDuplicateReceiptAsync(userId, request.Vendor, request.Amount, request.Date);
+            return Ok(result);
+        }
     }
 }
