@@ -25,12 +25,20 @@ namespace ExpenseTracker.Api.Services
             var historyStart = previousMonths.First();
 
             var budgets = await _unitOfWork.Budgets.Query()
+                .AsNoTracking()
                 .Where(x => x.UserId == userId)
+                .Select(x => new BudgetReadModel(x.Category, x.MonthlyLimit))
                 .ToListAsync();
 
             var expenses = await _unitOfWork.Expenses.Query()
+                .AsNoTracking()
                 .Where(x => x.UserId == userId && x.Date >= historyStart && x.Date < monthEnd)
-                .Include(x => x.Category)
+                .Select(x => new ExpenseReadModel(
+                    x.Date,
+                    x.Amount,
+                    x.Category != null && x.Category.Name != null && x.Category.Name != string.Empty
+                        ? x.Category.Name
+                        : "Uncategorized"))
                 .ToListAsync();
 
             var daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
@@ -46,16 +54,23 @@ namespace ExpenseTracker.Api.Services
                         RoundCurrency(group.Sum(item => item.MonthlyLimit))),
                     StringComparer.OrdinalIgnoreCase);
 
+            var knownExpenseCategoryNames = expenses
+                .GroupBy(x => NormalizeCategoryKey(x.CategoryName))
+                .ToDictionary(
+                    group => group.Key,
+                    group => PickDisplayName(group.Select(x => x.CategoryName), "Uncategorized"),
+                    StringComparer.OrdinalIgnoreCase);
+
             var currentMonthExpenses = expenses
                 .Where(x => x.Date >= monthStart)
                 .ToList();
 
             var currentSpendByCategory = currentMonthExpenses
-                .GroupBy(GetExpenseCategoryKey)
+                .GroupBy(x => NormalizeCategoryKey(x.CategoryName))
                 .ToDictionary(
                     group => group.Key,
                     group => new CategorySpendAggregate(
-                        PickDisplayName(group.Select(GetExpenseCategoryName), "Uncategorized"),
+                        PickDisplayName(group.Select(x => x.CategoryName), "Uncategorized"),
                         RoundCurrency(group.Sum(item => item.Amount))),
                     StringComparer.OrdinalIgnoreCase);
 
@@ -63,7 +78,7 @@ namespace ExpenseTracker.Api.Services
                 .Where(x => x.Date < monthStart)
                 .GroupBy(x => new
                 {
-                    CategoryKey = GetExpenseCategoryKey(x),
+                    CategoryKey = NormalizeCategoryKey(x.CategoryName),
                     Month = new DateTime(x.Date.Year, x.Date.Month, 1)
                 })
                 .ToDictionary(
@@ -92,10 +107,9 @@ namespace ExpenseTracker.Api.Services
                     var remaining = RoundCurrency(budget - spent);
                     var categoryName = budgetAggregate?.Name
                         ?? spendAggregate?.Name
-                        ?? PickDisplayName(
-                            expenses.Where(item => NormalizeCategoryKey(GetExpenseCategoryName(item)) == key)
-                                .Select(GetExpenseCategoryName),
-                            "Uncategorized");
+                        ?? (knownExpenseCategoryNames.TryGetValue(key, out var knownName)
+                            ? knownName
+                            : "Uncategorized");
 
                     var riskLevel = DetermineRiskLevel(budget, spent, projectedSpend);
                     var insight = BuildCategoryInsight(categoryName, budget, spent, projectedSpend, suggestedBudget, historicalAverage, remaining);
@@ -309,14 +323,6 @@ namespace ExpenseTracker.Api.Services
             _ => 0
         };
 
-        private static string GetExpenseCategoryKey(Models.Expense expense) =>
-            NormalizeCategoryKey(GetExpenseCategoryName(expense));
-
-        private static string GetExpenseCategoryName(Models.Expense expense) =>
-            string.IsNullOrWhiteSpace(expense.Category?.Name)
-                ? "Uncategorized"
-                : expense.Category.Name;
-
         private static string NormalizeCategoryKey(string? category) =>
             string.IsNullOrWhiteSpace(category) ? "uncategorized" : category.Trim().ToLowerInvariant();
 
@@ -342,6 +348,8 @@ namespace ExpenseTracker.Api.Services
         private static decimal RoundCurrency(decimal value) =>
             Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
+        private sealed record BudgetReadModel(string Category, decimal MonthlyLimit);
+        private sealed record ExpenseReadModel(DateTime Date, decimal Amount, string CategoryName);
         private sealed record CategoryBudgetAggregate(string Name, decimal Amount);
         private sealed record CategorySpendAggregate(string Name, decimal Amount);
     }

@@ -17,6 +17,7 @@ namespace ExpenseTracker.Api.Services
         {
             var cutoff = DateTime.UtcNow.AddMonths(-months + 1);
             var grouped = await _unitOfWork.Expenses.Query()
+                .AsNoTracking()
                 .Where(x => x.UserId == userId && x.Date >= cutoff)
                 .GroupBy(x => new { x.Date.Year, x.Date.Month })
                 .Select(g => new
@@ -41,10 +42,10 @@ namespace ExpenseTracker.Api.Services
         public async Task<IEnumerable<(string Category, decimal Total)>> GetCategoryBreakdownAsync(int userId)
         {
             var results = await _unitOfWork.Expenses.Query()
+                .AsNoTracking()
                 .Where(x => x.UserId == userId)
-                .Include(x => x.Category)
-                .GroupBy(x => x.Category)
-                .Select(g => new { CategoryName = g.Key != null ? g.Key.Name : "Uncategorized", Total = g.Sum(e => e.Amount) })
+                .GroupBy(x => x.Category != null ? x.Category.Name : "Uncategorized")
+                .Select(g => new { CategoryName = g.Key ?? "Uncategorized", Total = g.Sum(e => e.Amount) })
                 .ToListAsync();
 
             return results.Select(r => (r.CategoryName, r.Total));

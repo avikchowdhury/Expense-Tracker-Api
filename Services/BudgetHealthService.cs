@@ -26,11 +26,18 @@ namespace ExpenseTracker.Api.Services
             DateTime periodStartUtc,
             DateTime periodEndUtc)
         {
-            var budgets = await _unitOfWork.Budgets.Query()
+            var budgetSummary = await _unitOfWork.Budgets.Query()
+                .AsNoTracking()
                 .Where(budget => budget.UserId == userId)
-                .ToListAsync();
+                .GroupBy(_ => 1)
+                .Select(group => new
+                {
+                    Count = group.Count(),
+                    TotalBudget = group.Sum(budget => budget.MonthlyLimit)
+                })
+                .FirstOrDefaultAsync();
 
-            if (budgets.Count == 0)
+            if (budgetSummary == null)
             {
                 return new BudgetHealthSnapshot
                 {
@@ -42,8 +49,10 @@ namespace ExpenseTracker.Api.Services
                 };
             }
 
-            var totalBudget = budgets.Sum(budget => budget.MonthlyLimit);
+            var budgetCount = budgetSummary.Count;
+            var totalBudget = budgetSummary.TotalBudget;
             var spent = await _unitOfWork.Expenses.Query()
+                .AsNoTracking()
                 .Where(expense =>
                     expense.UserId == userId &&
                     expense.Date >= periodStartUtc &&
@@ -57,15 +66,15 @@ namespace ExpenseTracker.Api.Services
                     Budget = 0m,
                     Spent = spent,
                     Status = "warning",
-                    Message = $"{budgets.Count} budget rule{(budgets.Count == 1 ? string.Empty : "s")} found, but the combined limit is zero.",
-                    BudgetCount = budgets.Count
+                    Message = $"{budgetCount} budget rule{(budgetCount == 1 ? string.Empty : "s")} found, but the combined limit is zero.",
+                    BudgetCount = budgetCount
                 };
             }
 
             var ratio = spent / totalBudget;
-            var prefix = budgets.Count == 1
+            var prefix = budgetCount == 1
                 ? "1 budget rule active."
-                : $"{budgets.Count} budget rules active.";
+                : $"{budgetCount} budget rules active.";
 
             var (status, message) = ratio switch
             {
@@ -80,7 +89,7 @@ namespace ExpenseTracker.Api.Services
                 Spent = spent,
                 Status = status,
                 Message = message,
-                BudgetCount = budgets.Count
+                BudgetCount = budgetCount
             };
         }
     }

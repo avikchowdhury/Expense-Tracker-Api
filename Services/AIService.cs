@@ -11,6 +11,7 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using ExpenseTracker.Api.Models;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace ExpenseTracker.Api.Services
@@ -22,6 +23,7 @@ namespace ExpenseTracker.Api.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IBudgetHealthService _budgetHealthService;
         private readonly IBudgetAdvisorService _budgetAdvisorService;
+        private readonly IMemoryCache _cache;
         private readonly ILogger<AIService> _logger;
 
         public AIService(
@@ -30,6 +32,7 @@ namespace ExpenseTracker.Api.Services
             IUnitOfWork unitOfWork,
             IBudgetHealthService budgetHealthService,
             IBudgetAdvisorService budgetAdvisorService,
+            IMemoryCache cache,
             ILogger<AIService> logger)
         {
             _httpClient = httpClient;
@@ -37,6 +40,7 @@ namespace ExpenseTracker.Api.Services
             _unitOfWork = unitOfWork;
             _budgetHealthService = budgetHealthService;
             _budgetAdvisorService = budgetAdvisorService;
+            _cache = cache;
             _logger = logger;
         }
 
@@ -78,16 +82,24 @@ namespace ExpenseTracker.Api.Services
 
         public async Task<AiInsightSnapshotDto> GetInsightsAsync(int userId)
         {
+            var cacheKey = GetUserCacheKey("insights", userId);
+            if (_cache.TryGetValue(cacheKey, out AiInsightSnapshotDto? cachedSnapshot) && cachedSnapshot != null)
+            {
+                return cachedSnapshot;
+            }
+
             var now = DateTime.UtcNow;
             var monthStart = new DateTime(now.Year, now.Month, 1);
             var recentWindowStart = now.AddMonths(-3);
 
             var receipts = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
                 .Where(x => x.UserId == userId)
                 .OrderByDescending(x => x.UploadedAt)
                 .ToListAsync();
 
             var budgets = await _unitOfWork.Budgets.Query()
+                .AsNoTracking()
                 .Where(x => x.UserId == userId)
                 .OrderByDescending(x => x.LastReset)
                 .ToListAsync();
@@ -225,7 +237,7 @@ namespace ExpenseTracker.Api.Services
                 suggestions.Add($"Check whether {latestReceipt.Vendor ?? "the latest vendor"} belongs in a recurring spend category.");
             }
 
-            return new AiInsightSnapshotDto
+            var snapshot = new AiInsightSnapshotDto
             {
                 GeneratedAt = now,
                 BudgetHealth = budgetHealth,
@@ -245,16 +257,28 @@ namespace ExpenseTracker.Api.Services
                 Alerts = alerts,
                 Subscriptions = subscriptions
             };
+
+            _cache.Set(cacheKey, snapshot, TimeSpan.FromSeconds(20));
+            return snapshot;
         }
 
         public async Task<List<AiSubscriptionInsightDto>> GetSubscriptionsAsync(int userId)
         {
+            var cacheKey = GetUserCacheKey("subscriptions", userId);
+            if (_cache.TryGetValue(cacheKey, out List<AiSubscriptionInsightDto>? cachedSubscriptions) && cachedSubscriptions != null)
+            {
+                return cachedSubscriptions;
+            }
+
             var receipts = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
                 .Where(x => x.UserId == userId && x.UploadedAt >= DateTime.UtcNow.AddMonths(-6))
                 .OrderByDescending(x => x.UploadedAt)
                 .ToListAsync();
 
-            return DetectSubscriptions(receipts);
+            var subscriptions = DetectSubscriptions(receipts);
+            _cache.Set(cacheKey, subscriptions, TimeSpan.FromMinutes(2));
+            return subscriptions;
         }
 
         public async Task<AiChatResponseDto> ChatAsync(int userId, string message)
@@ -836,11 +860,18 @@ namespace ExpenseTracker.Api.Services
 
         public async Task<List<SpendingAnomalyDto>> GetSpendingAnomaliesAsync(int userId)
         {
+            var cacheKey = GetUserCacheKey("spending-anomalies", userId);
+            if (_cache.TryGetValue(cacheKey, out List<SpendingAnomalyDto>? cachedAnomalies) && cachedAnomalies != null)
+            {
+                return cachedAnomalies;
+            }
+
             var now = DateTime.UtcNow;
             var monthStart = new DateTime(now.Year, now.Month, 1);
             var threeMonthsBack = now.AddMonths(-3);
 
             var receipts = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
                 .Where(r => r.UserId == userId && r.UploadedAt >= threeMonthsBack)
                 .ToListAsync();
 
@@ -877,15 +908,24 @@ namespace ExpenseTracker.Api.Services
                 });
             }
 
-            return anomalies.OrderByDescending(a => a.PercentageIncrease).Take(5).ToList();
+            var results = anomalies.OrderByDescending(a => a.PercentageIncrease).Take(5).ToList();
+            _cache.Set(cacheKey, results, TimeSpan.FromSeconds(20));
+            return results;
         }
 
         public async Task<MonthlySummaryDto> GetMonthlySummaryAsync(int userId)
         {
+            var cacheKey = GetUserCacheKey("monthly-summary", userId);
+            if (_cache.TryGetValue(cacheKey, out MonthlySummaryDto? cachedSummary) && cachedSummary != null)
+            {
+                return cachedSummary;
+            }
+
             var now = DateTime.UtcNow;
             var monthStart = new DateTime(now.Year, now.Month, 1);
 
             var receipts = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
                 .Where(r => r.UserId == userId && r.UploadedAt >= monthStart)
                 .ToListAsync();
 
@@ -902,7 +942,7 @@ namespace ExpenseTracker.Api.Services
                 ? $"This month you've spent ${totalSpend:F0} with {receipts.Count} receipts. Top category: {topCategory}. Notable: {anomalies.First().Message}"
                 : $"This month you've spent ${totalSpend:F0} across {receipts.Count} receipts. Top category: {topCategory}. Spending looks steady with no major anomalies.";
 
-            return new MonthlySummaryDto
+            var summary = new MonthlySummaryDto
             {
                 Month = now.ToString("MMMM yyyy"),
                 TotalSpend = Math.Round(totalSpend, 2),
@@ -911,22 +951,33 @@ namespace ExpenseTracker.Api.Services
                 AiSummary = aiSummary,
                 Anomalies = anomalies
             };
+
+            _cache.Set(cacheKey, summary, TimeSpan.FromSeconds(20));
+            return summary;
         }
 
         public async Task<SpendingForecastDto> GetSpendingForecastAsync(int userId)
         {
             var now = DateTime.UtcNow;
             var monthStart = new DateTime(now.Year, now.Month, 1);
+            var monthEnd = monthStart.AddMonths(1);
             var daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
             var daysElapsed = Math.Max(1, (now - monthStart).Days + 1);
-            var daysRemaining = daysInMonth - daysElapsed;
+            var daysRemaining = Math.Max(daysInMonth - daysElapsed, 0);
 
-            var receipts = await _unitOfWork.Receipts.Query()
-                .Where(r => r.UserId == userId && r.UploadedAt >= monthStart)
-                .OrderBy(r => r.UploadedAt)
+            var dailySpending = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
+                .Where(r => r.UserId == userId && r.UploadedAt >= monthStart && r.UploadedAt < monthEnd)
+                .GroupBy(r => r.UploadedAt.Date)
+                .Select(group => new
+                {
+                    Date = group.Key,
+                    Amount = group.Sum(item => item.TotalAmount)
+                })
+                .OrderBy(item => item.Date)
                 .ToListAsync();
 
-            var currentSpend = receipts.Sum(r => r.TotalAmount);
+            var currentSpend = dailySpending.Sum(item => item.Amount);
             var dailyAverage = currentSpend / daysElapsed;
             var projectedMonthEnd = currentSpend + (dailyAverage * daysRemaining);
 
@@ -945,15 +996,56 @@ namespace ExpenseTracker.Api.Services
                     ? $"Projected month-end spend of {projectedMonthEnd:C} is approaching your limit. Watch your top categories."
                     : $"Spending looks controlled at {dailyAverage:C}/day. Projected month-end total: {projectedMonthEnd:C}.";
 
-            var snapshot = await GetInsightsAsync(userId);
-            var narrative = await TryGenerateModelReplyAsync(
+            var topCategory = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
+                .Where(r =>
+                    r.UserId == userId &&
+                    r.UploadedAt >= monthStart &&
+                    r.UploadedAt < monthEnd &&
+                    !string.IsNullOrWhiteSpace(r.Category))
+                .GroupBy(r => r.Category!)
+                .Select(group => new
+                {
+                    Category = group.Key,
+                    Total = group.Sum(item => item.TotalAmount)
+                })
+                .OrderByDescending(item => item.Total)
+                .Select(item => item.Category)
+                .FirstOrDefaultAsync() ?? "N/A";
+
+            var recentMonthlyTotals = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
+                .Where(r => r.UserId == userId && r.UploadedAt >= now.AddMonths(-3))
+                .GroupBy(r => new { r.UploadedAt.Year, r.UploadedAt.Month })
+                .Select(group => group.Sum(item => item.TotalAmount))
+                .ToListAsync();
+
+            var forecastSnapshot = new AiInsightSnapshotDto
+            {
+                GeneratedAt = now,
+                BudgetHealth = trend == "critical"
+                    ? "Over budget"
+                    : trend == "warning"
+                        ? "Approaching budget limit"
+                        : "Healthy budget pace",
+                EvidenceSummary = $"Forecast built from {dailySpending.Count} tracked spending day{(dailySpending.Count == 1 ? string.Empty : "s")} in {now:MMMM yyyy}.",
+                MonthSpend = Math.Round(currentSpend, 2),
+                RecentAverage = recentMonthlyTotals.Count > 0
+                    ? Math.Round(recentMonthlyTotals.Average(), 2)
+                    : 0m,
+                TopCategory = topCategory,
+                Suggestions = budgetAdvisor.Recommendations.Take(3).ToList()
+            };
+
+            var narrative = await GetCachedModelReplyAsync(
+                $"{GetUserCacheKey("forecast-narrative", userId)}:{now:yyyyMM}:{Math.Round(currentSpend, 2)}:{Math.Round(projectedMonthEnd, 2)}:{Math.Round(budgetAdvisor.TotalBudget, 2)}:{trend}",
                 $"Forecast: currently at {currentSpend:C} after {daysElapsed} days. Projected end: {projectedMonthEnd:C}. Budget: {budgetAdvisor.TotalBudget:C}. Give a brief 1-sentence spending forecast advice.",
-                snapshot,
+                forecastSnapshot,
                 fallbackNarrative);
 
-            var dailyByDate = receipts
-                .GroupBy(r => r.UploadedAt.Date)
-                .ToDictionary(g => g.Key, g => g.Sum(r => r.TotalAmount));
+            var dailyByDate = dailySpending.ToDictionary(
+                item => item.Date,
+                item => Math.Round(item.Amount, 2));
 
             var breakdown = new List<DailySpendPointDto>();
             for (var d = monthStart.Date; d <= now.Date; d = d.AddDays(1))
@@ -990,6 +1082,12 @@ namespace ExpenseTracker.Api.Services
 
         public async Task<List<NotificationDto>> GetNotificationsAsync(int userId)
         {
+            var cacheKey = GetUserCacheKey("notifications", userId);
+            if (_cache.TryGetValue(cacheKey, out List<NotificationDto>? cachedNotifications) && cachedNotifications != null)
+            {
+                return cachedNotifications;
+            }
+
             var notifications = new List<NotificationDto>();
             var now = DateTime.UtcNow;
 
@@ -1035,10 +1133,13 @@ namespace ExpenseTracker.Api.Services
                 });
             }
 
-            return notifications
+            var results = notifications
                 .OrderByDescending(n => GetSeverityRank(n.Severity))
                 .ThenByDescending(n => n.GeneratedAt)
                 .ToList();
+
+            _cache.Set(cacheKey, results, TimeSpan.FromSeconds(15));
+            return results;
         }
 
         public async Task<ParseTextResultDto> ParseTextExpenseAsync(string text)
@@ -1132,11 +1233,18 @@ namespace ExpenseTracker.Api.Services
 
         public async Task<VendorAnalysisDto> GetVendorAnalysisAsync(int userId)
         {
+            var cacheKey = GetUserCacheKey("vendor-analysis", userId);
+            if (_cache.TryGetValue(cacheKey, out VendorAnalysisDto? cachedAnalysis) && cachedAnalysis != null)
+            {
+                return cachedAnalysis;
+            }
+
             var now = DateTime.UtcNow;
             var monthStart = new DateTime(now.Year, now.Month, 1);
             var priorMonthStart = monthStart.AddMonths(-1);
 
             var receipts = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
                 .Where(r => r.UserId == userId && r.UploadedAt >= priorMonthStart)
                 .ToListAsync();
 
@@ -1179,17 +1287,21 @@ namespace ExpenseTracker.Api.Services
                 : $"Your top vendor is {topVendor.Vendor} at {topVendor.TotalSpend:C} this month. {(newVendors > 0 ? $"{newVendors} new vendors appeared this month." : "Vendor mix is consistent with last month.")}";
 
             var snapshot = await GetInsightsAsync(userId);
-            var narrative = await TryGenerateModelReplyAsync(
+            var narrative = await GetCachedModelReplyAsync(
+                $"{GetUserCacheKey("vendor-analysis-narrative", userId)}:{now:yyyyMM}:{topVendor?.Vendor ?? "none"}:{topVendor?.TotalSpend ?? 0m}:{newVendors}",
                 $"Vendor analysis for {now:MMMM}: top vendor is {topVendor?.Vendor ?? "none"} ({topVendor?.TotalSpend:C}). {newVendors} new vendors. Give one sentence of vendor spending observation.",
                 snapshot,
                 fallback);
 
-            return new VendorAnalysisDto
+            var analysis = new VendorAnalysisDto
             {
                 Month = now.ToString("MMMM yyyy"),
                 TopVendors = vendors,
                 AiObservation = narrative
             };
+
+            _cache.Set(cacheKey, analysis, TimeSpan.FromSeconds(30));
+            return analysis;
         }
 
         public async Task<DuplicateCheckResultDto> CheckDuplicateReceiptAsync(int userId, string vendor, decimal amount, string date)
@@ -1201,6 +1313,7 @@ namespace ExpenseTracker.Api.Services
             var windowEnd = parsedDate.AddDays(1);
 
             var candidates = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
                 .Where(r => r.UserId == userId
                     && r.UploadedAt >= windowStart
                     && r.UploadedAt <= windowEnd)
