@@ -73,5 +73,25 @@ namespace ExpenseTracker.Api.Controllers
             var result = await _aiService.ChatAsync(userId, request.Message);
             return Ok(result);
         }
+
+        [HttpGet("spending-anomalies")]
+        public async Task<IActionResult> GetSpendingAnomalies()
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _aiService.GetSpendingAnomaliesAsync(userId);
+            return Ok(result);
+        }
+
+        [HttpGet("monthly-summary")]
+        public async Task<IActionResult> GetMonthlySummary()
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _aiService.GetMonthlySummaryAsync(userId);
+            return Ok(result);
+        }
     }
 }

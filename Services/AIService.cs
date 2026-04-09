@@ -833,5 +833,85 @@ namespace ExpenseTracker.Api.Services
                 RawText = fallback.RawText
             };
         }
+
+        public async Task<List<SpendingAnomalyDto>> GetSpendingAnomaliesAsync(int userId)
+        {
+            var now = DateTime.UtcNow;
+            var monthStart = new DateTime(now.Year, now.Month, 1);
+            var threeMonthsBack = now.AddMonths(-3);
+
+            var expenses = await _unitOfWork.Expenses.Query()
+                .Where(e => e.UserId == userId && e.Date >= threeMonthsBack)
+                .Include(e => e.Category)
+                .ToListAsync();
+
+            var thisMonthByCategory = expenses
+                .Where(e => e.Date >= monthStart)
+                .GroupBy(e => e.Category?.Name ?? "Uncategorized")
+                .ToDictionary(g => g.Key, g => g.Sum(e => e.Amount));
+
+            var priorByCategory = expenses
+                .Where(e => e.Date < monthStart)
+                .GroupBy(e => e.Category?.Name ?? "Uncategorized")
+                .ToDictionary(g => g.Key, g => g.Sum(e => e.Amount) / 3m);
+
+            var anomalies = new List<SpendingAnomalyDto>();
+
+            foreach (KeyValuePair<string, decimal> entry in thisMonthByCategory)
+            {
+                if (!priorByCategory.TryGetValue(entry.Key, out var avgMonth) || avgMonth <= 0)
+                    continue;
+
+                var pctIncrease = ((entry.Value - avgMonth) / avgMonth) * 100m;
+
+                if (pctIncrease < 20)
+                    continue;
+
+                anomalies.Add(new SpendingAnomalyDto
+                {
+                    Category = entry.Key,
+                    ThisMonth = Math.Round(entry.Value, 2),
+                    AverageMonth = Math.Round(avgMonth, 2),
+                    PercentageIncrease = Math.Round(pctIncrease, 1),
+                    Severity = pctIncrease >= 100 ? "critical" : pctIncrease >= 50 ? "warning" : "normal",
+                    Message = $"{entry.Key} is up {pctIncrease:F0}% vs. your 3-month average (${avgMonth:F0} → ${entry.Value:F0})."
+                });
+            }
+
+            return anomalies.OrderByDescending(a => a.PercentageIncrease).Take(5).ToList();
+        }
+
+        public async Task<MonthlySummaryDto> GetMonthlySummaryAsync(int userId)
+        {
+            var now = DateTime.UtcNow;
+            var monthStart = new DateTime(now.Year, now.Month, 1);
+
+            var receipts = await _unitOfWork.Receipts.Query()
+                .Where(r => r.UserId == userId && r.UploadedAt >= monthStart)
+                .ToListAsync();
+
+            var totalSpend = receipts.Sum(r => r.TotalAmount);
+            var topCategory = receipts
+                .Where(r => !string.IsNullOrWhiteSpace(r.Category))
+                .GroupBy(r => r.Category!)
+                .OrderByDescending(g => g.Sum(r => r.TotalAmount))
+                .FirstOrDefault()?.Key ?? "N/A";
+
+            var anomalies = await GetSpendingAnomaliesAsync(userId);
+
+            var aiSummary = anomalies.Count > 0
+                ? $"This month you've spent ${totalSpend:F0} with {receipts.Count} receipts. Top category: {topCategory}. Notable: {anomalies.First().Message}"
+                : $"This month you've spent ${totalSpend:F0} across {receipts.Count} receipts. Top category: {topCategory}. Spending looks steady with no major anomalies.";
+
+            return new MonthlySummaryDto
+            {
+                Month = now.ToString("MMMM yyyy"),
+                TotalSpend = Math.Round(totalSpend, 2),
+                TopCategory = topCategory,
+                ReceiptCount = receipts.Count,
+                AiSummary = aiSummary,
+                Anomalies = anomalies
+            };
+        }
     }
 }

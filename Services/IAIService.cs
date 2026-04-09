@@ -10,6 +10,8 @@ namespace ExpenseTracker.Api.Services
         Task<AiInsightSnapshotDto> GetInsightsAsync(int userId);
         Task<List<AiSubscriptionInsightDto>> GetSubscriptionsAsync(int userId);
         Task<AiChatResponseDto> ChatAsync(int userId, string message);
+        Task<List<SpendingAnomalyDto>> GetSpendingAnomaliesAsync(int userId);
+        Task<MonthlySummaryDto> GetMonthlySummaryAsync(int userId);
     }
 
     public class ReceiptParseResult
