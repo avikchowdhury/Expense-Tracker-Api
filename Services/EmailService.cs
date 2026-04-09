@@ -54,5 +54,37 @@ namespace ExpenseTracker.Api.Services
             await client.SendMailAsync(message, cancellationToken);
             return true;
         }
+
+        public async Task<bool> SendPasswordResetEmailAsync(string toEmail, string token, CancellationToken cancellationToken = default)
+        {
+            var settings = _configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
+            if (string.IsNullOrWhiteSpace(settings.SmtpHost) ||
+                string.IsNullOrWhiteSpace(settings.FromAddress) ||
+                string.IsNullOrWhiteSpace(settings.Username) ||
+                string.IsNullOrWhiteSpace(settings.Password))
+            {
+                return false;
+            }
+
+            using var client = new SmtpClient(settings.SmtpHost, settings.SmtpPort)
+            {
+                EnableSsl = settings.EnableSsl,
+                Credentials = new NetworkCredential(settings.Username, settings.Password)
+            };
+
+            using var message = new MailMessage
+            {
+                From = new MailAddress(settings.FromAddress, settings.FromName),
+                Subject = "Password Reset — AI Expense Tracker",
+                Body = $"Your password reset code is: {token}\n\nIt will expire in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.",
+                IsBodyHtml = false
+            };
+
+            message.To.Add(toEmail);
+
+            using var registration = cancellationToken.Register(() => client.SendAsyncCancel());
+            await client.SendMailAsync(message, cancellationToken);
+            return true;
+        }
     }
 }

@@ -136,6 +136,59 @@ namespace ExpenseTracker.Api.Controllers
             return Ok(tokenResponse);
         }
 
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto request, CancellationToken cancellationToken)
+        {
+            var email = NormalizeEmail(request.Email);
+            if (!IsValidEmail(email))
+                return BadRequest(new { message = "Enter a valid email address." });
+
+            var user = await _unitOfWork.Users.Query().FirstOrDefaultAsync(u => u.Email == email);
+            // Always return OK to avoid user enumeration
+            if (user == null)
+                return Ok(new { message = "If that email exists, a reset code has been sent." });
+
+            var token = new Random().Next(100000, 999999).ToString();
+            _cache.Set($"reset_{email}", token, TimeSpan.FromMinutes(15));
+
+            var emailed = await _emailService.SendPasswordResetEmailAsync(email, token, cancellationToken);
+            if (!emailed && _environment.IsDevelopment())
+            {
+                System.Diagnostics.Debug.WriteLine($"Password reset OTP for {email}: {token}");
+                return Ok(new
+                {
+                    message = "SMTP not configured. Development reset code returned.",
+                    developmentToken = token
+                });
+            }
+
+            return Ok(new { message = "If that email exists, a reset code has been sent." });
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto request)
+        {
+            var email = NormalizeEmail(request.Email);
+            if (!IsValidEmail(email))
+                return BadRequest(new { message = "Enter a valid email address." });
+
+            if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
+                return BadRequest(new { message = "Password must be at least 6 characters." });
+
+            if (!_cache.TryGetValue($"reset_{email}", out string? cachedToken) || cachedToken != request.Token)
+                return BadRequest(new { message = "Invalid or expired reset code." });
+
+            var user = await _unitOfWork.Users.Query().FirstOrDefaultAsync(u => u.Email == email);
+            if (user == null)
+                return BadRequest(new { message = "Invalid or expired reset code." });
+
+            user.PasswordHash = HashPassword(request.NewPassword);
+            await _unitOfWork.SaveChangesAsync();
+            _cache.Remove($"reset_{email}");
+
+            return Ok(new { message = "Password updated successfully. You can now log in." });
+        }
+
         [Authorize]
         [HttpPost("bootstrap-admin")]
         public async Task<IActionResult> BootstrapAdmin()
