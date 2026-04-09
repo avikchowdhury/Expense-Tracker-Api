@@ -346,7 +346,7 @@ namespace ExpenseTracker.Api.Services
         {
             var apiKey = _configuration["OpenAI:ApiKey"];
             var model = _configuration["OpenAI:Model"] ?? "gpt-5-mini";
-            var endpoint = _configuration["OpenAI:ResponsesEndpoint"] ?? "https://api.openai.com/v1/responses";
+            var endpoint = _configuration["OpenAI:ResponsesEndpoint"];
 
             if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(endpoint))
             {
