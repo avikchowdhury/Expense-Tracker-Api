@@ -363,6 +363,26 @@ namespace ExpenseTracker.Api.Services
             };
         }
 
+        private static string GetUserCacheKey(string scope, int userId) =>
+            $"ai:{scope}:{userId}";
+
+        private async Task<string> GetCachedModelReplyAsync(
+            string cacheKey,
+            string userMessage,
+            AiInsightSnapshotDto snapshot,
+            string fallbackReply)
+        {
+            if (_cache.TryGetValue(cacheKey, out string? cachedReply) &&
+                !string.IsNullOrWhiteSpace(cachedReply))
+            {
+                return cachedReply;
+            }
+
+            var reply = await TryGenerateModelReplyAsync(userMessage, snapshot, fallbackReply);
+            _cache.Set(cacheKey, reply, TimeSpan.FromMinutes(5));
+            return reply;
+        }
+
         private async Task<string> TryGenerateModelReplyAsync(
             string userMessage,
             AiInsightSnapshotDto snapshot,
