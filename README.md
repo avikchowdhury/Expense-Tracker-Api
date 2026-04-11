@@ -34,52 +34,96 @@ A production-ready REST API for the AI-powered Expense Tracker application. Buil
 
 ---
 
-## Architecture
+📊 Expense Tracker API – Architecture Overview
 
-```
-# Expense Tracker API
+This project follows a clean layered architecture to ensure scalability, maintainability, and separation of concerns. The application is structured into distinct layers, each responsible for a specific part of the system.
 
-A highly scalable, enterprise-grade RESTful API built with **.NET 8** and **Entity Framework Core**. This backend is designed with a strict layered architecture, integrating asynchronous AI processing and secure JWT authentication.
+🧠 Architecture Overview
 
-## 🏗️ System Architecture (The "Restaurant" Analogy)
+The request flow follows this structure:
 
-To make the codebase easily navigable and to clearly define the separation of concerns, this system is built using a layered architecture pattern. If you imagine this application as a high-end corporate restaurant, here is how the data flows through the kitchen:
+Controller → Service Layer → Data Layer → Database
 
-### `Program.cs` (The General Manager)
-The entry point of the application. It sets up the rules, hires the staff via Dependency Injection, turns on the security cameras (Authentication Middleware), and defines the routing. Once the application is running, it steps back.
+Each layer is loosely coupled and communicates through interfaces, making the system easy to extend and test.
 
-### `Controllers/` (The Waitstaff)
-The front line of the API. When a client application sends a request, the Controller takes the order and hands it to the Services. 
-* **Rule:** Controllers contain zero business logic and do not touch the database. They simply accept requests, route them to the appropriate service, and return standard `HTTP 200/400/500` responses.
+🔹 Controllers (API Layer)
 
-### `DTOs/` (The Menu & The Plated Dish)
-Data Transfer Objects (DTOs) create a strict boundary between the database and the frontend. 
-* Clients do not send raw database models; they send formatted Request DTOs (The Menu). 
-* The API does not expose raw database tables; it returns sanitized Response DTOs (The beautifully plated dish), ensuring sensitive internal data is never leaked to the UI.
+Controllers act as the entry point for all HTTP requests.
 
-### `Services/` (The Executive Chefs)
-This is where the actual business logic happens. The `Services` execute the core functionality of the application, such as the `AIService` analyzing receipt text for spending anomalies, or the `BudgetAdvisorService` forecasting future expenses. Services are hidden behind interfaces (e.g., `IAIService`) to ensure the application remains completely unit-testable.
+Handle incoming API requests
+Perform basic validation
+Delegate processing to the service layer
+Return appropriate HTTP responses
 
-### `Models/` (The Raw Ingredients)
-Entity Framework Core entity classes. These represent the exact schema of the SQL Server database tables. They are the raw, unfiltered data structures used internally by the backend.
+Each controller represents a specific domain (e.g., Expenses, Users, Categories).
 
-### `Data/Repositories/` (The Pantry Workers)
-The Data Access Layer. Services (Chefs) should never write raw SQL queries or touch the `DbContext` directly. Instead, they ask a Repository for data. The Repository's only job is to efficiently fetch the exact `Model` from the database and hand it back to the Service.
+🔹 Services (Business Logic Layer)
 
-### `Data/UnitOfWork.cs` (The Kitchen Expeditor)
-Manages atomic database transactions. If a user uploads a receipt and the system needs to update their `Expense` table *and* their `BudgetStatus` table, the Unit of Work ensures both actions succeed together. If one fails, it rolls back the entire transaction to prevent corrupted financial data.
+The service layer contains the core business logic of the application.
 
-### `Migrations/` (The Renovation History)
-The architectural blueprint of every schema change ever made to the database, allowing for seamless deployments and database rebuilds across different environments.
+Implements application rules and workflows
+Processes and transforms data
+Interacts with the data layer via Unit of Work
+Uses interfaces for better abstraction and testability
 
----
+Example services include:
 
-## 🚀 Key Technical Features
-* **Pattern Implementation:** Repository and Unit of Work patterns for decoupled data access and transactional safety.
-* **AI Integration:** Abstracted AI service layer for intelligent receipt parsing and financial forecasting.
-* **Security:** Stateless JWT authentication and role-based access control.
-* **Resiliency:** Graceful fallback mechanisms for third-party AI parsing failures (`ReceiptFallbackHelper`).
-```
+Expense Service
+Email Service
+AI Service
+🔹 Data Layer (Persistence Layer)
+
+Responsible for all database interactions using Entity Framework Core.
+
+✅ DbContext
+AppDbContext manages database connection and entity mapping
+✅ Repository Pattern
+One repository per entity
+Encapsulates CRUD operations
+✅ Unit of Work
+Coordinates multiple repositories
+Ensures all operations are committed in a single transaction
+🔹 Models (Entities)
+
+Represents the database tables.
+
+Defines the structure of data stored in the database
+Used internally within the data layer
+
+Examples:
+
+Expense
+User
+Category
+🔹 DTOs (Data Transfer Objects)
+
+Used to transfer data between layers.
+
+Prevents exposing internal models
+Improves security and flexibility
+Shapes request and response payloads
+🔹 Migrations
+Managed by Entity Framework Core
+Tracks and applies database schema changes
+Enables version control for database structure
+🔹 Program.cs (Application Configuration)
+
+Handles application setup and configuration.
+
+Registers services using Dependency Injection
+Configures middleware pipeline (Authentication, Authorization, etc.)
+Initializes application settings
+🚀 Key Design Principles
+Separation of Concerns – Each layer has a clear responsibility
+Dependency Injection – Promotes loose coupling
+Repository Pattern – Abstracts data access logic
+Unit of Work – Ensures transactional consistency
+DTO Usage – Secures and structures data flow
+✅ Benefits of This Architecture
+Easy to maintain and extend
+Highly testable
+Clean and organized codebase
+Scalable for future enhancements
 
 **Patterns used:**
 - **Repository + Unit of Work** — all data access goes through `IUnitOfWork`, no raw DbContext calls in controllers
