@@ -37,21 +37,48 @@ A production-ready REST API for the AI-powered Expense Tracker application. Buil
 ## Architecture
 
 ```
-ExpenseTracker.Api/
-├── Controllers/          # 12 REST controllers
-├── Services/             # Business logic (interface + implementation)
-│   ├── IAIService.cs / AIService.cs
-│   ├── IEmailService.cs / EmailService.cs
-│   └── ...
-├── Data/
-│   ├── AppDbContext.cs          # EF Core DbContext
-│   ├── IUnitOfWork.cs           # Unit-of-Work interface
-│   ├── UnitOfWork.cs            # Wraps all repositories
-│   └── Repositories/            # One repository per entity
-├── Models/               # EF entity classes
-├── DTOs/                 # Request/Response transfer objects
-├── Migrations/           # EF Core migration history
-└── Program.cs            # DI registration, middleware pipeline
+# Expense Tracker API
+
+A highly scalable, enterprise-grade RESTful API built with **.NET 8** and **Entity Framework Core**. This backend is designed with a strict layered architecture, integrating asynchronous AI processing and secure JWT authentication.
+
+## 🏗️ System Architecture (The "Restaurant" Analogy)
+
+To make the codebase easily navigable and to clearly define the separation of concerns, this system is built using a layered architecture pattern. If you imagine this application as a high-end corporate restaurant, here is how the data flows through the kitchen:
+
+### `Program.cs` (The General Manager)
+The entry point of the application. It sets up the rules, hires the staff via Dependency Injection, turns on the security cameras (Authentication Middleware), and defines the routing. Once the application is running, it steps back.
+
+### `Controllers/` (The Waitstaff)
+The front line of the API. When a client application sends a request, the Controller takes the order and hands it to the Services. 
+* **Rule:** Controllers contain zero business logic and do not touch the database. They simply accept requests, route them to the appropriate service, and return standard `HTTP 200/400/500` responses.
+
+### `DTOs/` (The Menu & The Plated Dish)
+Data Transfer Objects (DTOs) create a strict boundary between the database and the frontend. 
+* Clients do not send raw database models; they send formatted Request DTOs (The Menu). 
+* The API does not expose raw database tables; it returns sanitized Response DTOs (The beautifully plated dish), ensuring sensitive internal data is never leaked to the UI.
+
+### `Services/` (The Executive Chefs)
+This is where the actual business logic happens. The `Services` execute the core functionality of the application, such as the `AIService` analyzing receipt text for spending anomalies, or the `BudgetAdvisorService` forecasting future expenses. Services are hidden behind interfaces (e.g., `IAIService`) to ensure the application remains completely unit-testable.
+
+### `Models/` (The Raw Ingredients)
+Entity Framework Core entity classes. These represent the exact schema of the SQL Server database tables. They are the raw, unfiltered data structures used internally by the backend.
+
+### `Data/Repositories/` (The Pantry Workers)
+The Data Access Layer. Services (Chefs) should never write raw SQL queries or touch the `DbContext` directly. Instead, they ask a Repository for data. The Repository's only job is to efficiently fetch the exact `Model` from the database and hand it back to the Service.
+
+### `Data/UnitOfWork.cs` (The Kitchen Expeditor)
+Manages atomic database transactions. If a user uploads a receipt and the system needs to update their `Expense` table *and* their `BudgetStatus` table, the Unit of Work ensures both actions succeed together. If one fails, it rolls back the entire transaction to prevent corrupted financial data.
+
+### `Migrations/` (The Renovation History)
+The architectural blueprint of every schema change ever made to the database, allowing for seamless deployments and database rebuilds across different environments.
+
+---
+
+## 🚀 Key Technical Features
+* **Pattern Implementation:** Repository and Unit of Work patterns for decoupled data access and transactional safety.
+* **AI Integration:** Abstracted AI service layer for intelligent receipt parsing and financial forecasting.
+* **Security:** Stateless JWT authentication and role-based access control.
+* **Resiliency:** Graceful fallback mechanisms for third-party AI parsing failures (`ReceiptFallbackHelper`).
 ```
 
 **Patterns used:**
