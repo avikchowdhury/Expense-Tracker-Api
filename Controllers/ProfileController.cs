@@ -37,15 +37,7 @@ namespace ExpenseTracker.Api.Controllers
                 return Unauthorized();
             var user = await _unitOfWork.Users.FindAsync(userId);
             if (user == null) return NotFound();
-            return Ok(new
-            {
-                user.Email,
-                user.Role,
-                AvatarUrl = BuildAvatarUrl(user.AvatarUrl),
-                user.FullName,
-                user.Phone,
-                user.Address
-            });
+            return Ok(MapProfile(user));
         }
 
         [HttpPost("avatar")]
@@ -94,16 +86,21 @@ namespace ExpenseTracker.Api.Controllers
                 user.Phone = normalizedPhone;
             }
 
+            if (dto.BudgetNotificationsEnabled.HasValue)
+                user.BudgetNotificationsEnabled = dto.BudgetNotificationsEnabled.Value;
+            if (dto.AnomalyNotificationsEnabled.HasValue)
+                user.AnomalyNotificationsEnabled = dto.AnomalyNotificationsEnabled.Value;
+            if (dto.SubscriptionNotificationsEnabled.HasValue)
+                user.SubscriptionNotificationsEnabled = dto.SubscriptionNotificationsEnabled.Value;
+            if (dto.WeeklySummaryEmailEnabled.HasValue)
+                user.WeeklySummaryEmailEnabled = dto.WeeklySummaryEmailEnabled.Value;
+            if (dto.MonthlyReportEmailEnabled.HasValue)
+                user.MonthlyReportEmailEnabled = dto.MonthlyReportEmailEnabled.Value;
+            if (dto.WeeklySummaryDay is not null)
+                user.WeeklySummaryDay = NormalizeWeeklySummaryDay(dto.WeeklySummaryDay);
+
             await _unitOfWork.SaveChangesAsync();
-            return Ok(new
-            {
-                user.Email,
-                user.Role,
-                AvatarUrl = BuildAvatarUrl(user.AvatarUrl),
-                user.FullName,
-                user.Phone,
-                user.Address
-            });
+            return Ok(MapProfile(user));
         }
 
         [HttpPost("change-password")]
@@ -176,6 +173,42 @@ namespace ExpenseTracker.Api.Controllers
                 : $"/{storedAvatarUrl}";
 
             return $"{Request.Scheme}://{Request.Host}{normalizedPath}";
+        }
+
+        private object MapProfile(User user) => new
+        {
+            user.Email,
+            user.Role,
+            AvatarUrl = BuildAvatarUrl(user.AvatarUrl),
+            user.FullName,
+            user.Phone,
+            user.Address,
+            user.BudgetNotificationsEnabled,
+            user.AnomalyNotificationsEnabled,
+            user.SubscriptionNotificationsEnabled,
+            user.WeeklySummaryEmailEnabled,
+            user.MonthlyReportEmailEnabled,
+            user.WeeklySummaryDay
+        };
+
+        private static string NormalizeWeeklySummaryDay(string? day)
+        {
+            if (string.IsNullOrWhiteSpace(day))
+            {
+                return "Monday";
+            }
+
+            return day.Trim().ToLowerInvariant() switch
+            {
+                "monday" => "Monday",
+                "tuesday" => "Tuesday",
+                "wednesday" => "Wednesday",
+                "thursday" => "Thursday",
+                "friday" => "Friday",
+                "saturday" => "Saturday",
+                "sunday" => "Sunday",
+                _ => "Monday"
+            };
         }
     }
     public class ChangePasswordDto

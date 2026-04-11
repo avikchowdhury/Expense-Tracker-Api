@@ -104,6 +104,26 @@ namespace ExpenseTracker.Api.Controllers
             return Ok(result);
         }
 
+        [HttpPost("forecast/what-if")]
+        public async Task<IActionResult> GetWhatIfForecast([FromBody] WhatIfForecastRequestDto request)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _aiService.GetWhatIfForecastAsync(userId, request ?? new WhatIfForecastRequestDto());
+            return Ok(result);
+        }
+
+        [HttpGet("weekly-summary")]
+        public async Task<IActionResult> GetWeeklySummary()
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _aiService.GetWeeklySummaryAsync(userId);
+            return Ok(result);
+        }
+
         [HttpPost("parse-text")]
         public async Task<IActionResult> ParseText([FromBody] Dtos.ParseTextRequestDto request)
         {

@@ -11,5 +11,6 @@ namespace ExpenseTracker.Api.Dtos
         public string? Category { get; set; }
         public string? BlobUrl { get; set; }
         public string? ParsedContentJson { get; set; }
+        public bool IsMarkedDuplicate { get; set; }
     }
 }

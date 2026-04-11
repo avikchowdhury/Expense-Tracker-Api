@@ -26,6 +26,8 @@ namespace ExpenseTracker.Api.Models
 
         public string? ParsedContentJson { get; set; }
 
+        public bool IsMarkedDuplicate { get; set; }
+
         public ICollection<Expense> Expenses { get; set; } = new List<Expense>();
     }
 }

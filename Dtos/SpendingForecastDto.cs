@@ -9,6 +9,9 @@ namespace ExpenseTracker.Api.Dtos
         public int DaysRemaining { get; set; }
         public string Trend { get; set; } = "on-track"; // on-track | warning | critical
         public string AiNarrative { get; set; } = string.Empty;
+        public decimal BudgetAmount { get; set; }
+        public string TopCategory { get; set; } = "N/A";
+        public List<ForecastDriverDto> Drivers { get; set; } = new();
         public List<DailySpendPointDto> DailyBreakdown { get; set; } = new();
     }
 

@@ -8,5 +8,7 @@ namespace ExpenseTracker.Api.Dtos
         public string? MetricLabel { get; set; }
         public string? MetricValue { get; set; }
         public string? Action { get; set; }
+        public string? ActionLabel { get; set; }
+        public string? ActionRoute { get; set; }
     }
 }

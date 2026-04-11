@@ -29,6 +29,7 @@ namespace ExpenseTracker.Api.Data
             {
                 receipt.HasKey(x => x.Id);
                 receipt.Property(x => x.TotalAmount).HasPrecision(18, 2);
+                receipt.HasIndex(x => new { x.UserId, x.UploadedAt });
                 receipt.HasOne(x => x.User)
                     .WithMany(x => x.Receipts)
                     .HasForeignKey(x => x.UserId)

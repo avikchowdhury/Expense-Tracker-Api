@@ -28,5 +28,18 @@ namespace ExpenseTracker.Api.Models
         public string? FullName { get; set; }
         public string? Phone { get; set; }
         public string? Address { get; set; }
+
+        public bool BudgetNotificationsEnabled { get; set; } = true;
+
+        public bool AnomalyNotificationsEnabled { get; set; } = true;
+
+        public bool SubscriptionNotificationsEnabled { get; set; } = true;
+
+        public bool WeeklySummaryEmailEnabled { get; set; } = true;
+
+        public bool MonthlyReportEmailEnabled { get; set; }
+
+        [MaxLength(20)]
+        public string WeeklySummaryDay { get; set; } = "Monday";
     }
 }

@@ -153,7 +153,9 @@ namespace ExpenseTracker.Api.Services
                     Severity = ratio >= 1m ? "critical" : ratio >= 0.8m ? "warning" : "positive",
                     MetricLabel = "Budget used",
                     MetricValue = $"{Math.Round(ratio * 100, 0)}%",
-                    Action = ratio >= 0.8m ? "Review your highest categories before the next upload batch." : "Keep your current pace and monitor weekly trends."
+                    Action = ratio >= 0.8m ? "Review your highest categories before the next upload batch." : "Keep your current pace and monitor weekly trends.",
+                    ActionLabel = ratio >= 0.8m ? "Open forecast" : "Review forecast",
+                    ActionRoute = "/forecast"
                 });
             }
             else
@@ -163,7 +165,9 @@ namespace ExpenseTracker.Api.Services
                     Title = "Budget setup missing",
                     Summary = "Add a monthly budget to unlock more precise overspend coaching.",
                     Severity = "info",
-                    Action = "Create a General budget first so the assistant can flag risk earlier."
+                    Action = "Create a General budget first so the assistant can flag risk earlier.",
+                    ActionLabel = "Create budget",
+                    ActionRoute = "/budgets"
                 });
             }
 
@@ -176,7 +180,9 @@ namespace ExpenseTracker.Api.Services
                 Severity = topCategory == "N/A" ? "info" : "positive",
                 MetricLabel = "Top category",
                 MetricValue = topCategory,
-                Action = topCategory == "N/A" ? "Upload more receipts for stronger categorization trends." : "Compare this category against your budget or last month to spot drift."
+                Action = topCategory == "N/A" ? "Upload more receipts for stronger categorization trends." : "Compare this category against your budget or last month to spot drift.",
+                ActionLabel = topCategory == "N/A" ? "Add receipts" : "Try what-if forecast",
+                ActionRoute = topCategory == "N/A" ? "/receipts" : "/forecast"
             });
 
             var latestReceipt = receipts.FirstOrDefault();
@@ -189,7 +195,9 @@ namespace ExpenseTracker.Api.Services
                 Severity = latestReceipt == null ? "info" : "positive",
                 MetricLabel = "Recent uploads",
                 MetricValue = receipts.Take(5).Count().ToString(),
-                Action = latestReceipt == null ? "Upload a receipt to start generating AI guidance." : "Use the receipts page to correct categories before the next insight refresh."
+                Action = latestReceipt == null ? "Upload a receipt to start generating AI guidance." : "Use the receipts page to correct categories before the next insight refresh.",
+                ActionLabel = latestReceipt == null ? "Add receipt" : "Open cleanup",
+                ActionRoute = latestReceipt == null ? "/receipts" : "/receipts"
             });
 
             if (subscriptions.Count > 0)
@@ -202,7 +210,9 @@ namespace ExpenseTracker.Api.Services
                     Severity = "positive",
                     MetricLabel = "Recurring monthly",
                     MetricValue = $"{subscriptions.Sum(item => item.EstimatedMonthlyCost):C0}",
-                    Action = "Review recurring charges before the next billing date and decide which ones still deserve budget room."
+                    Action = "Review recurring charges before the next billing date and decide which ones still deserve budget room.",
+                    ActionLabel = "Review subscriptions",
+                    ActionRoute = "/insights?tab=subscriptions"
                 });
             }
 
@@ -864,6 +874,164 @@ namespace ExpenseTracker.Api.Services
             _ => 0
         };
 
+        private async Task<ForecastComputation> BuildForecastAsync(int userId, DateTime referenceUtc)
+        {
+            var monthStart = new DateTime(referenceUtc.Year, referenceUtc.Month, 1);
+            var monthEnd = monthStart.AddMonths(1);
+            var daysInMonth = DateTime.DaysInMonth(referenceUtc.Year, referenceUtc.Month);
+            var daysElapsed = Math.Max(1, (referenceUtc - monthStart).Days + 1);
+            var daysRemaining = Math.Max(daysInMonth - daysElapsed, 0);
+
+            var dailySpending = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
+                .Where(r => r.UserId == userId && r.UploadedAt >= monthStart && r.UploadedAt < monthEnd)
+                .GroupBy(r => r.UploadedAt.Date)
+                .Select(group => new
+                {
+                    Date = group.Key,
+                    Amount = group.Sum(item => item.TotalAmount)
+                })
+                .OrderBy(item => item.Date)
+                .ToListAsync();
+
+            var drivers = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
+                .Where(r =>
+                    r.UserId == userId &&
+                    r.UploadedAt >= monthStart &&
+                    r.UploadedAt < monthEnd &&
+                    !string.IsNullOrWhiteSpace(r.Category))
+                .GroupBy(r => r.Category!)
+                .Select(group => new ForecastDriverDto
+                {
+                    Category = group.Key,
+                    Amount = Math.Round(group.Sum(item => item.TotalAmount), 2)
+                })
+                .OrderByDescending(item => item.Amount)
+                .Take(3)
+                .ToListAsync();
+
+            var recentMonthlyTotals = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
+                .Where(r => r.UserId == userId && r.UploadedAt >= referenceUtc.AddMonths(-3))
+                .GroupBy(r => new { r.UploadedAt.Year, r.UploadedAt.Month })
+                .Select(group => group.Sum(item => item.TotalAmount))
+                .ToListAsync();
+
+            var currentSpend = dailySpending.Sum(item => item.Amount);
+            var dailyAverage = daysElapsed > 0 ? currentSpend / daysElapsed : 0m;
+            var projectedMonthEnd = currentSpend + (dailyAverage * daysRemaining);
+            var budgetAdvisor = await _budgetAdvisorService.GetBudgetAdvisorAsync(userId, referenceUtc);
+            var trend = GetForecastTrend(projectedMonthEnd, budgetAdvisor.TotalBudget);
+            var topCategory = drivers.FirstOrDefault()?.Category ?? "N/A";
+            var fallbackNarrative = trend == "critical"
+                ? $"You're on pace to spend {projectedMonthEnd:C} this month. That exceeds your budget and deserves an immediate cutback plan."
+                : trend == "warning"
+                    ? $"Projected month-end spend of {projectedMonthEnd:C} is approaching your limit. Watch your top categories."
+                    : $"Spending looks controlled at {dailyAverage:C}/day. Projected month-end total: {projectedMonthEnd:C}.";
+
+            var snapshot = new AiInsightSnapshotDto
+            {
+                GeneratedAt = referenceUtc,
+                BudgetHealth = trend == "critical"
+                    ? "Over budget"
+                    : trend == "warning"
+                        ? "Approaching budget limit"
+                        : "Healthy budget pace",
+                EvidenceSummary = $"Forecast built from {dailySpending.Count} tracked spending day{(dailySpending.Count == 1 ? string.Empty : "s")} in {referenceUtc:MMMM yyyy}.",
+                MonthSpend = RoundCurrency(currentSpend),
+                RecentAverage = recentMonthlyTotals.Count > 0
+                    ? RoundCurrency(recentMonthlyTotals.Average())
+                    : 0m,
+                TopCategory = topCategory,
+                Suggestions = budgetAdvisor.Recommendations.Take(3).ToList()
+            };
+
+            var dailyByDate = dailySpending.ToDictionary(
+                item => item.Date,
+                item => RoundCurrency(item.Amount));
+
+            var breakdown = new List<DailySpendPointDto>();
+            for (var day = monthStart.Date; day <= referenceUtc.Date; day = day.AddDays(1))
+            {
+                breakdown.Add(new DailySpendPointDto
+                {
+                    Date = day.ToString("yyyy-MM-dd"),
+                    Amount = dailyByDate.TryGetValue(day, out var amount) ? amount : 0m,
+                    IsProjected = false
+                });
+            }
+
+            for (var day = referenceUtc.Date.AddDays(1); day <= monthEnd.AddDays(-1); day = day.AddDays(1))
+            {
+                breakdown.Add(new DailySpendPointDto
+                {
+                    Date = day.ToString("yyyy-MM-dd"),
+                    Amount = RoundCurrency(dailyAverage),
+                    IsProjected = true
+                });
+            }
+
+            return new ForecastComputation(
+                referenceUtc,
+                currentSpend,
+                projectedMonthEnd,
+                dailyAverage,
+                daysElapsed,
+                daysRemaining,
+                trend,
+                budgetAdvisor.TotalBudget,
+                topCategory,
+                drivers,
+                breakdown,
+                snapshot,
+                fallbackNarrative,
+                budgetAdvisor);
+        }
+
+        private static string GetForecastTrend(decimal projectedMonthEnd, decimal totalBudget)
+        {
+            if (totalBudget <= 0m)
+            {
+                return "on-track";
+            }
+
+            if (projectedMonthEnd >= totalBudget)
+            {
+                return "critical";
+            }
+
+            return projectedMonthEnd >= totalBudget * 0.8m
+                ? "warning"
+                : "on-track";
+        }
+
+        private static string GetForecastTrendLabel(string trend) => trend switch
+        {
+            "critical" => "Over budget pace",
+            "warning" => "Approaching limit",
+            _ => "On track"
+        };
+
+        private static string BuildWhatIfSummary(
+            ForecastComputation forecast,
+            decimal adjustedProjectedMonthEnd,
+            string adjustedTrend,
+            IReadOnlyCollection<ForecastAdjustmentDto> adjustments,
+            decimal netChange)
+        {
+            var categories = string.Join(", ", adjustments.Select(adjustment =>
+                $"{adjustment.Category} {(adjustment.DeltaAmount < 0 ? adjustment.DeltaAmount.ToString("C") : $"+{adjustment.DeltaAmount:C}")}"));
+            var changeSummary = netChange < 0
+                ? $"cuts projected spend by {Math.Abs(netChange):C}"
+                : $"adds {netChange:C} to projected spend";
+
+            return $"{categories} {changeSummary}, moving your month-end projection from {forecast.ProjectedMonthEnd:C} to {adjustedProjectedMonthEnd:C}. Risk shifts from {GetForecastTrendLabel(forecast.Trend).ToLowerInvariant()} to {GetForecastTrendLabel(adjustedTrend).ToLowerInvariant()}.";
+        }
+
+        private static decimal RoundCurrency(decimal value) =>
+            Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
         private static ReceiptParseResult BuildFallbackReceiptParse(string fileName, byte[]? fileBytes = null)
         {
             var fallback = ReceiptFallbackHelper.Parse(fileName, fileBytes);
@@ -976,7 +1144,7 @@ namespace ExpenseTracker.Api.Services
             return summary;
         }
 
-        public async Task<SpendingForecastDto> GetSpendingForecastAsync(int userId)
+        private async Task<SpendingForecastDto> BuildSpendingForecastLegacyAsync(int userId)
         {
             var now = DateTime.UtcNow;
             var monthStart = new DateTime(now.Year, now.Month, 1);
@@ -1100,6 +1268,112 @@ namespace ExpenseTracker.Api.Services
             };
         }
 
+        public async Task<SpendingForecastDto> GetSpendingForecastAsync(int userId)
+        {
+            var forecast = await BuildForecastAsync(userId, DateTime.UtcNow);
+            var narrative = await GetCachedModelReplyAsync(
+                $"{GetUserCacheKey("forecast-narrative", userId)}:{forecast.ReferenceUtc:yyyyMM}:{RoundCurrency(forecast.CurrentSpend)}:{RoundCurrency(forecast.ProjectedMonthEnd)}:{RoundCurrency(forecast.TotalBudget)}:{forecast.Trend}",
+                $"Forecast: currently at {forecast.CurrentSpend:C} after {forecast.DaysElapsed} days. Projected end: {forecast.ProjectedMonthEnd:C}. Budget: {forecast.TotalBudget:C}. Give a brief 1-sentence spending forecast advice.",
+                forecast.Snapshot,
+                forecast.FallbackNarrative);
+
+            return new SpendingForecastDto
+            {
+                CurrentSpend = RoundCurrency(forecast.CurrentSpend),
+                ProjectedMonthEnd = RoundCurrency(forecast.ProjectedMonthEnd),
+                DailyAverage = RoundCurrency(forecast.DailyAverage),
+                DaysElapsed = forecast.DaysElapsed,
+                DaysRemaining = forecast.DaysRemaining,
+                Trend = forecast.Trend,
+                AiNarrative = narrative,
+                BudgetAmount = RoundCurrency(forecast.TotalBudget),
+                TopCategory = forecast.TopCategory,
+                Drivers = forecast.Drivers,
+                DailyBreakdown = forecast.DailyBreakdown
+            };
+        }
+
+        public async Task<WhatIfForecastDto> GetWhatIfForecastAsync(int userId, WhatIfForecastRequestDto request)
+        {
+            var forecast = await BuildForecastAsync(userId, DateTime.UtcNow);
+            var adjustments = (request?.Adjustments ?? new List<ForecastAdjustmentDto>())
+                .Where(adjustment =>
+                    !string.IsNullOrWhiteSpace(adjustment.Category) &&
+                    adjustment.DeltaAmount != 0)
+                .GroupBy(adjustment => adjustment.Category.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(group => new ForecastAdjustmentDto
+                {
+                    Category = group.First().Category.Trim(),
+                    DeltaAmount = RoundCurrency(group.Sum(item => item.DeltaAmount))
+                })
+                .ToList();
+
+            var netChange = adjustments.Sum(item => item.DeltaAmount);
+            var adjustedProjectedMonthEnd = Math.Max(0m, forecast.ProjectedMonthEnd + netChange);
+            var adjustedTrend = GetForecastTrend(adjustedProjectedMonthEnd, forecast.TotalBudget);
+
+            return new WhatIfForecastDto
+            {
+                BaseProjectedMonthEnd = RoundCurrency(forecast.ProjectedMonthEnd),
+                AdjustedProjectedMonthEnd = RoundCurrency(adjustedProjectedMonthEnd),
+                NetChange = RoundCurrency(netChange),
+                Trend = adjustedTrend,
+                Summary = adjustments.Count == 0
+                    ? "Add a category adjustment to see how your projected month-end total changes."
+                    : BuildWhatIfSummary(forecast, adjustedProjectedMonthEnd, adjustedTrend, adjustments, netChange),
+                Adjustments = adjustments
+            };
+        }
+
+        public async Task<WeeklySummaryDto> GetWeeklySummaryAsync(int userId)
+        {
+            var cacheKey = GetUserCacheKey("weekly-summary", userId);
+            if (_cache.TryGetValue(cacheKey, out WeeklySummaryDto? cachedSummary) && cachedSummary != null)
+            {
+                return cachedSummary;
+            }
+
+            var now = DateTime.UtcNow;
+            var weekStart = now.Date.AddDays(-6);
+            var weekEnd = now.Date.AddDays(1);
+
+            var receipts = await _unitOfWork.Receipts.Query()
+                .AsNoTracking()
+                .Where(r => r.UserId == userId && r.UploadedAt >= weekStart && r.UploadedAt < weekEnd)
+                .ToListAsync();
+
+            var totalSpend = receipts.Sum(r => r.TotalAmount);
+            var topCategories = receipts
+                .Where(r => !string.IsNullOrWhiteSpace(r.Category))
+                .GroupBy(r => r.Category!)
+                .Select(group => new WeeklyCategorySpendDto
+                {
+                    Category = group.Key,
+                    TotalSpend = RoundCurrency(group.Sum(item => item.TotalAmount))
+                })
+                .OrderByDescending(item => item.TotalSpend)
+                .Take(3)
+                .ToList();
+
+            var forecast = await BuildForecastAsync(userId, now);
+            var summary = new WeeklySummaryDto
+            {
+                RangeLabel = $"{weekStart:MMM d} - {now:MMM d}",
+                TotalSpend = RoundCurrency(totalSpend),
+                ReceiptCount = receipts.Count,
+                TopCategory = topCategories.FirstOrDefault()?.Category ?? "N/A",
+                ForecastRisk = GetForecastTrendLabel(forecast.Trend),
+                Recommendation = receipts.Count == 0
+                    ? "Start logging expenses this week so the assistant can build a meaningful digest."
+                    : forecast.BudgetAdvisor.Recommendations.FirstOrDefault()
+                        ?? "Keep categorizing expenses consistently so next week's summary gets sharper.",
+                TopCategories = topCategories
+            };
+
+            _cache.Set(cacheKey, summary, TimeSpan.FromMinutes(2));
+            return summary;
+        }
+
         public async Task<List<NotificationDto>> GetNotificationsAsync(int userId)
         {
             var cacheKey = GetUserCacheKey("notifications", userId);
@@ -1110,6 +1384,19 @@ namespace ExpenseTracker.Api.Services
 
             var notifications = new List<NotificationDto>();
             var now = DateTime.UtcNow;
+            var preferences = await _unitOfWork.Users.Query()
+                .AsNoTracking()
+                .Where(user => user.Id == userId)
+                .Select(user => new NotificationPreferenceSnapshot(
+                    user.BudgetNotificationsEnabled,
+                    user.AnomalyNotificationsEnabled,
+                    user.SubscriptionNotificationsEnabled))
+                .FirstOrDefaultAsync();
+
+            if (preferences == null)
+            {
+                return notifications;
+            }
 
             var alerts = (await GetInsightsAsync(userId)).Alerts;
             foreach (var alert in alerts.Take(5))
@@ -1154,6 +1441,13 @@ namespace ExpenseTracker.Api.Services
             }
 
             var results = notifications
+                .Where(notification => notification.Type switch
+                {
+                    "budget" => preferences.BudgetNotificationsEnabled,
+                    "anomaly" => preferences.AnomalyNotificationsEnabled,
+                    "subscription" => preferences.SubscriptionNotificationsEnabled,
+                    _ => true
+                })
                 .OrderByDescending(n => GetSeverityRank(n.Severity))
                 .ThenByDescending(n => n.GeneratedAt)
                 .ToList();
@@ -1370,5 +1664,26 @@ namespace ExpenseTracker.Api.Services
                 PotentialMatches = new List<ReceiptMatchDto>()
             };
         }
+
+        private sealed record ForecastComputation(
+            DateTime ReferenceUtc,
+            decimal CurrentSpend,
+            decimal ProjectedMonthEnd,
+            decimal DailyAverage,
+            int DaysElapsed,
+            int DaysRemaining,
+            string Trend,
+            decimal TotalBudget,
+            string TopCategory,
+            List<ForecastDriverDto> Drivers,
+            List<DailySpendPointDto> DailyBreakdown,
+            AiInsightSnapshotDto Snapshot,
+            string FallbackNarrative,
+            BudgetAdvisorSnapshotDto BudgetAdvisor);
+
+        private sealed record NotificationPreferenceSnapshot(
+            bool BudgetNotificationsEnabled,
+            bool AnomalyNotificationsEnabled,
+            bool SubscriptionNotificationsEnabled);
     }
 }

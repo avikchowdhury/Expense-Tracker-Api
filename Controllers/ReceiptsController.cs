@@ -41,7 +41,8 @@ namespace ExpenseTracker.Api.Controllers
                 TotalAmount = receipt.TotalAmount,
                 Vendor = receipt.Vendor,
                 Category = receipt.Category,
-                ParsedContentJson = receipt.ParsedContentJson
+                ParsedContentJson = receipt.ParsedContentJson,
+                IsMarkedDuplicate = receipt.IsMarkedDuplicate
             };
             return Ok(dto);
         }
@@ -71,40 +72,28 @@ namespace ExpenseTracker.Api.Controllers
                 TotalAmount = receipt.TotalAmount,
                 Vendor = receipt.Vendor,
                 Category = receipt.Category,
-                ParsedContentJson = receipt.ParsedContentJson
+                ParsedContentJson = receipt.ParsedContentJson,
+                IsMarkedDuplicate = receipt.IsMarkedDuplicate
             });
         }
 
 
         [HttpGet]
-        public async Task<IActionResult> GetReceipts([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null, [FromQuery] string? category = null, [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null)
+        public async Task<IActionResult> GetReceipts([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null, [FromQuery] string? category = null, [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null, [FromQuery] bool? markedDuplicate = null)
         {
             if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
                 return Unauthorized();
-            var query = (await _receiptService.GetReceiptsForUserAsync(userId)).AsQueryable();
-            if (!string.IsNullOrEmpty(search))
-                query = query.Where(x => x.FileName.Contains(search) || (x.Vendor != null && x.Vendor.Contains(search)));
-            if (!string.IsNullOrEmpty(category))
-                query = query.Where(x => x.Category == category);
-            if (dateFrom.HasValue)
-                query = query.Where(x => x.UploadedAt >= dateFrom.Value);
-            if (dateTo.HasValue)
-                query = query.Where(x => x.UploadedAt <= dateTo.Value);
-            var total = query.Count();
-            var receipts = query.OrderByDescending(x => x.UploadedAt).Skip((page - 1) * pageSize).Take(pageSize).ToList();
-            var dtos = receipts.Select(x => new ReceiptDto
+            var result = await _receiptService.GetReceiptsPageAsync(userId, new ReceiptQueryDto
             {
-                Id = x.Id,
-                UserId = x.UserId,
-                UploadedAt = x.UploadedAt,
-                FileName = x.FileName,
-                BlobUrl = x.BlobUrl,
-                TotalAmount = x.TotalAmount,
-                Vendor = x.Vendor,
-                Category = x.Category,
-                ParsedContentJson = x.ParsedContentJson
+                Page = page,
+                PageSize = pageSize,
+                Search = search,
+                Category = category,
+                DateFrom = dateFrom,
+                DateTo = dateTo,
+                MarkedDuplicate = markedDuplicate
             });
-            return Ok(new { total, data = dtos });
+            return Ok(result);
         }
 
 
@@ -122,6 +111,7 @@ namespace ExpenseTracker.Api.Controllers
             dto.BlobUrl = receipt.BlobUrl;
             dto.TotalAmount = receipt.TotalAmount;
             dto.Vendor = receipt.Vendor;
+            dto.IsMarkedDuplicate = receipt.IsMarkedDuplicate;
             return Ok(dto);
         }
 
@@ -170,10 +160,54 @@ namespace ExpenseTracker.Api.Controllers
                 TotalAmount = receipt.TotalAmount,
                 Vendor = receipt.Vendor,
                 Category = receipt.Category,
-                ParsedContentJson = receipt.ParsedContentJson
+                ParsedContentJson = receipt.ParsedContentJson,
+                IsMarkedDuplicate = receipt.IsMarkedDuplicate
             };
 
             return Ok(dto);
+        }
+
+        [HttpPost("bulk/categorize")]
+        public async Task<IActionResult> BulkCategorize([FromBody] BulkCategorizeReceiptsDto request)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(request.Category))
+                return BadRequest(new { message = "Category is required." });
+
+            var result = await _receiptService.BulkCategorizeAsync(userId, request.ReceiptIds, request.Category);
+            return Ok(result);
+        }
+
+        [HttpPost("bulk/delete")]
+        public async Task<IActionResult> BulkDelete([FromBody] BulkReceiptSelectionDto request)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _receiptService.BulkDeleteAsync(userId, request.ReceiptIds);
+            return Ok(result);
+        }
+
+        [HttpPost("bulk/apply-vendor-rules")]
+        public async Task<IActionResult> BulkApplyVendorRules([FromBody] BulkReceiptSelectionDto request)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _receiptService.BulkApplyVendorRulesAsync(userId, request.ReceiptIds);
+            return Ok(result);
+        }
+
+        [HttpPost("bulk/mark-duplicates")]
+        public async Task<IActionResult> BulkMarkDuplicates([FromBody] BulkMarkDuplicateReceiptsDto request)
+        {
+            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Unauthorized();
+
+            var result = await _receiptService.BulkMarkDuplicatesAsync(userId, request.ReceiptIds, request.MarkAsDuplicate);
+            return Ok(result);
         }
     }
 }

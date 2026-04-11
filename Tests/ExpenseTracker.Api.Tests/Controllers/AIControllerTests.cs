@@ -97,6 +97,8 @@ public class AIControllerTests
 
         public Task<List<SpendingAnomalyDto>> GetSpendingAnomaliesAsync(int userId) => throw new NotImplementedException();
         public Task<MonthlySummaryDto> GetMonthlySummaryAsync(int userId) => throw new NotImplementedException();
+        public Task<WhatIfForecastDto> GetWhatIfForecastAsync(int userId, WhatIfForecastRequestDto request) => throw new NotImplementedException();
+        public Task<WeeklySummaryDto> GetWeeklySummaryAsync(int userId) => throw new NotImplementedException();
 
         public Task<SpendingForecastDto> GetSpendingForecastAsync(int userId)
         {
