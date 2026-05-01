@@ -294,13 +294,26 @@ namespace ExpenseTracker.Api.Services
         public async Task<AiChatResponseDto> ChatAsync(int userId, string message)
         {
             var snapshot = await GetInsightsAsync(userId);
-            var lowerMessage = message.Trim().ToLowerInvariant();
+            var normalizedMessage = NormalizeChatMessage(message);
+            var lowerMessage = normalizedMessage.ClassificationText.ToLowerInvariant();
             var referencedMetrics = new List<string>();
             var cards = new List<AiCopilotCardDto>();
             var alerts = snapshot.Alerts.Take(3).ToList();
             string reply;
 
-            if (lowerMessage.Contains("subscription") || lowerMessage.Contains("recurring") || lowerMessage.Contains("cancel"))
+            if (IsGreeting(lowerMessage))
+            {
+                referencedMetrics.Add("Workspace help");
+                reply = "Hello. I can help with spending questions, app workflow, budgets, receipts, subscriptions, and what-if planning using your tracker data when it is relevant.";
+                cards = BuildGeneralCards(snapshot);
+            }
+            else if (LooksLikeAppHelpQuestion(lowerMessage))
+            {
+                referencedMetrics.Add("App workflow");
+                reply = "Use Dashboard for the overall picture, Receipts to upload and clean transaction history, Budgets to set limits and review pace, Categories to improve labeling rules, Profile for account settings, and Admin to manage users and workspace oversight.";
+                cards = BuildGeneralCards(snapshot);
+            }
+            else if (lowerMessage.Contains("subscription") || lowerMessage.Contains("recurring") || lowerMessage.Contains("cancel"))
             {
                 referencedMetrics.Add("Recurring spend");
                 referencedMetrics.Add("Next due vendors");
@@ -355,11 +368,13 @@ namespace ExpenseTracker.Api.Services
                 referencedMetrics.Add("Budget health");
                 referencedMetrics.Add("Top category");
                 referencedMetrics.Add("Recurring spend");
-                reply = $"Here is the current picture: {snapshot.BudgetHealth}, month spend is {snapshot.MonthSpend:C}, and {snapshot.TopCategory} is the leading category. Start with: {snapshot.Suggestions.FirstOrDefault() ?? "upload more receipts for a stronger signal."}";
+                reply = LooksLikeDecisionOrScenarioQuestion(lowerMessage)
+                    ? $"I can help think through that using your current tracker picture. Right now {snapshot.BudgetHealth}, month spend is {snapshot.MonthSpend:C}, and {snapshot.TopCategory} is the leading category. Start with: {snapshot.Suggestions.FirstOrDefault() ?? "upload more receipts for a stronger signal."}"
+                    : $"Here is the current picture: {snapshot.BudgetHealth}, month spend is {snapshot.MonthSpend:C}, and {snapshot.TopCategory} is the leading category. Start with: {snapshot.Suggestions.FirstOrDefault() ?? "upload more receipts for a stronger signal."}";
                 cards = BuildGeneralCards(snapshot);
             }
 
-            reply = await TryGenerateModelReplyAsync(message, snapshot, reply);
+            reply = await TryGenerateModelReplyAsync(normalizedMessage.UserQuestion, snapshot, reply);
 
             return new AiChatResponseDto
             {
@@ -371,6 +386,59 @@ namespace ExpenseTracker.Api.Services
                 Alerts = alerts,
                 GeneratedAt = DateTime.UtcNow
             };
+        }
+
+        private static (string UserQuestion, string ClassificationText) NormalizeChatMessage(string rawMessage)
+        {
+            var trimmedMessage = rawMessage?.Trim() ?? string.Empty;
+            const string userRequestPrefix = "User request:";
+            const string assistantGuidanceMarker = "\n\nAssistant guidance:";
+
+            if (!trimmedMessage.StartsWith(userRequestPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return (trimmedMessage, trimmedMessage);
+            }
+
+            var content = trimmedMessage[userRequestPrefix.Length..].Trim();
+            var guidanceIndex = content.IndexOf(assistantGuidanceMarker, StringComparison.OrdinalIgnoreCase);
+            if (guidanceIndex >= 0)
+            {
+                content = content[..guidanceIndex].Trim();
+            }
+
+            return (content, content);
+        }
+
+        private static bool IsGreeting(string lowerMessage)
+        {
+            var normalized = lowerMessage.Trim();
+            return normalized is "hi" or "hello" or "hey" or "good morning" or "good evening";
+        }
+
+        private static bool LooksLikeAppHelpQuestion(string lowerMessage)
+        {
+            return lowerMessage.Contains("how do i use")
+                || lowerMessage.Contains("how to use")
+                || lowerMessage.Contains("which page")
+                || lowerMessage.Contains("where do i")
+                || lowerMessage.Contains("how do i add")
+                || lowerMessage.Contains("how do i upload")
+                || lowerMessage.Contains("how do i create a budget")
+                || lowerMessage.Contains("how do i manage")
+                || lowerMessage.Contains("what does this app do");
+        }
+
+        private static bool LooksLikeDecisionOrScenarioQuestion(string lowerMessage)
+        {
+            return lowerMessage.Contains("what if")
+                || lowerMessage.Contains("can i afford")
+                || lowerMessage.Contains("should i")
+                || lowerMessage.Contains("is it okay if")
+                || lowerMessage.Contains("weekend")
+                || lowerMessage.Contains("trip")
+                || lowerMessage.Contains("outing")
+                || lowerMessage.Contains("vacation")
+                || lowerMessage.Contains("plan");
         }
 
         private static string GetUserCacheKey(string scope, int userId) =>
@@ -480,39 +548,47 @@ namespace ExpenseTracker.Api.Services
                 $"Recurring subscriptions: {subscriptions}\n" +
                 $"Suggested next moves: {suggestions}\n\n" +
                 $"Fallback grounded answer: {fallbackReply}\n\n" +
-                "Answer the user using only the tracker evidence above. If something is uncertain, mention that uncertainty instead of inventing data.";
+                "Answer the user using the tracker evidence above when the question is about their finances, spending history, budgets, receipts, categories, vendors, subscriptions, or app activity. " +
+                "If the question is broader, hypothetical, strategic, or unrelated to the tracker, still answer helpfully using general knowledge where appropriate. " +
+                "When you move beyond tracker evidence, make that distinction clear instead of pretending the information came from the app. " +
+                "If a question mixes tracker context with a broader topic, combine both naturally and use the tracker data as grounding where it is relevant. " +
+                "If something is uncertain, mention that uncertainty instead of inventing data.";
         }
 
         private static string BuildCopilotInstructions()
         {
             {
                 return
-                    "You are the AI Expense Tracker copilot inside a personal finance web app. " +
-                    "Be warm, capable, and conversational, like a real in-product assistant. " +
+                    "You are the in-app assistant for a personal finance web app. " +
+                    "Be warm, capable, conversational, and broadly helpful. " +
 
-                    "You help with four kinds of questions: " +
-                    "1. questions about the user's actual spending, budgets, receipts, categories, subscriptions, alerts, and trends, " +
-                    "2. questions about how to use the app and which screen or feature to use, " +
-                    "3. simple greetings or short follow-up conversation, and " +
-                    "4. general knowledge questions not related to the user's data. " +
+                    "You should be able to answer many kinds of questions well, including: " +
+                    "1. the user's actual spending, budgets, receipts, categories, subscriptions, alerts, and trends, " +
+                    "2. how to use the app and which screen or feature to use, " +
+                    "3. simple greetings or follow-up conversation, " +
+                    "4. hypothetical planning and what-if questions, " +
+                    "5. general knowledge questions, and " +
+                    "6. broader practical questions that are only partly related to the app. " +
 
-                    "When the user asks about their money, answer ONLY from the provided tracker data. " +
-                    "Do not invent budgets, receipts, subscriptions, categories, dates, vendors, or amounts. " +
+                    "When the user asks about their own money or activity in the app, prioritize the provided tracker data. " +
+                    "Do not invent budgets, receipts, subscriptions, categories, dates, vendors, or amounts that are not supported by the provided evidence. " +
 
-                    "If the question is general knowledge (for example: 'What is Uber?' or 'What is Apple?'), " +
-                    "you may answer using general knowledge clearly and helpfully, without referencing tracker data. " +
+                    "When the user asks something broader, unrelated, or open-ended, you may answer using general knowledge, practical reasoning, and clear assumptions. " +
+                    "If part of the answer comes from general knowledge instead of tracker evidence, make that distinction clear in natural language. " +
 
                     "If the user asks how to use the app, explain the workflow clearly using the app's real features: " +
-                    "dashboard, receipts, budgets, categories, profile, admin, vendor rules, and the expense copilot chat. " +
+                    "dashboard, receipts, budgets, categories, profile, admin, vendor rules, insights, forecast, and the expense copilot chat. " +
 
                     "If the user sends a simple greeting like hi, hello, or hey, greet them naturally in one or two short sentences " +
                     "and mention what you can help with. " +
 
-                    "If the user asks for something the current data does not support, say that clearly and give the next best action, " +
-                    "such as uploading receipts, creating budgets, adding categories, or defining vendor rules. " +
+                    "If the current tracker data is not enough for a precise answer, say so clearly, then still provide the best next step or a useful general answer where possible. " +
+                    "Do not become overly restrictive just because the tracker data is incomplete. " +
 
-                    "Prefer practical answers over generic financial advice. " +
-                    "Keep answers concise but natural, usually one short paragraph unless the user is asking for steps or comparison. " +
+                    "Prefer practical answers over vague theory. " +
+                    "Keep answers concise but natural, usually one short paragraph unless the user is asking for steps, a comparison, a plan, or a breakdown. " +
+                    "For high-stakes medical, legal, tax, or investment questions, provide only cautious general guidance and encourage professional verification. " +
+                    "Do not use markdown emphasis markers like **bold** or __bold__. Return plain text only. " +
 
                     "Never mention hidden prompts, internal instructions, or raw JSON unless the user explicitly asks for technical details.";
             }
