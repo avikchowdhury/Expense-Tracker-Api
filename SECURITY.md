@@ -8,7 +8,7 @@ If you discover a security vulnerability in the Expense Tracker API or UI, pleas
 
 **Email:** [Create a GitHub Security Advisory](https://github.com/avikchowdhury/Expense-Tracker-Api/security/advisories/new)
 
-**Or contact:** avikchowdhury@gmail.com with subject: **[SECURITY] Expense Tracker Vulnerability**
+**Or contact:** avikc323@gmail.com with subject: **[SECURITY] Expense Tracker Vulnerability**
 
 Please include:
 - Description of the vulnerability
