@@ -1566,42 +1566,84 @@ namespace ExpenseTracker.Api.Services
                     reasoning = new { effort = "low" },
                     instructions = @"You are a smart global expense receipt parser. Extract structured expense data from informal, conversational, or typoed text in ANY language or country.
 
-                    CATEGORIES — assign the single best match:
-                    - Food & Dining: restaurants, cafes, fast food, food delivery (UberEats, DoorDash, Swiggy, Deliveroo, Zomato), hotels (eating), bars, meals
-                    - Snacks & Beverages: chocolates, chips, candy, street food, coffee (takeaway), juice, ice cream, drinks, snack bars
-                    - Groceries: supermarkets (Walmart, Tesco, Lidl, Big Bazaar, Carrefour), vegetables, fruits, dairy, household staples, kirana/corner stores
-                    - Transport: taxi (Uber, Ola, Grab, Lyft), bus, metro, train, flight, fuel, parking, toll, bike rental, ferry
-                    - Healthcare & Medicine: pharmacy (CVS, Boots, Apollo), doctor, hospital, clinic, lab test, dental, optician, health checkup
-                    - Entertainment: movies, Netflix, Spotify, Disney+, concerts, events, gaming, streaming subscriptions
-                    - Shopping: clothes, shoes, electronics (Amazon, Flipkart, eBay), gifts, accessories, department stores
-                    - Education: books, tuition, course fees, school fees, online courses (Udemy, Coursera), stationery
-                    - Utilities & Bills: electricity, water, gas, internet, mobile/phone recharge, broadband, DTH, cable TV
-                    - Fitness & Wellness: gym, yoga, salon, spa, haircut, beauty parlour, massage
-                    - Travel & Accommodation: hotels (staying), Airbnb, hostels, vacation packages, sightseeing
-                    - General: use ONLY if none of the above clearly fits
+                    CATEGORIES — pick the single best match using common sense and context:
 
-                    VENDOR EXTRACTION:
-                    - Extract any shop, brand, app, or place name mentioned (e.g. 'Walmart', 'Zomato', 'Costa Coffee', 'local pharmacy')
-                    - For unnamed street/local purchases use 'Local shop' or 'Street stall'
+                    Daily spending:
+                    - Food & Dining: restaurants, cafes, dhabas, bars, food courts, hotel meals, takeaway, dine-in
+                    - Snacks & Beverages: chocolates, chips, candy, street food (egg roll, momos, vada pav, puchka, hot dog), juice, chai, coffee (takeaway), ice cream, biscuits, namkeen
+                    - Groceries: vegetables, fruits, dairy, rice, dal, atta, supermarkets (Walmart, Tesco, Big Bazaar, DMart, Carrefour, Lidl), kirana store, corner shop
+                    - Food Delivery: Swiggy, Zomato, Uber Eats, DoorDash, Deliveroo, Grab Food, FoodPanda, Talabat, online food order
+
+                    Getting around:
+                    - Transport: taxi, auto, rickshaw, Ola, Uber, Lyft, Grab, Rapido, bus, metro, train, ferry, toll, parking, petrol, diesel, fuel, EV charging, bike rental
+                    - Travel & Trips: flights, hotels (overnight stay), Airbnb, hostels, vacation, tours, sightseeing, travel insurance, visa fees, holiday packages
+
+                    Home & living:
+                    - Rent & Housing: house rent, room rent, PG, apartment, office rent, hostel rent, society charges, maintenance, lease, security deposit
+                    - Utilities & Bills: electricity, water, gas (Indane, HP, British Gas), internet, mobile recharge, broadband, DTH, cable TV, WiFi, phone bill
+                    - Home & Furniture: furniture, appliances, home decor, home repair, plumber, electrician, carpenter, painting, AC service, pest control, IKEA
+                    - Pets: pet food, vet, grooming, pet supplies, pet medicine, boarding, kennel
+
+                    Health:
+                    - Healthcare & Medicine: pharmacy (Apollo, CVS, Boots, MedPlus, Walgreens), doctor, hospital, clinic, lab test, dental, optician, health checkup, ambulance, surgery, consultation
+                    - Fitness & Wellness: gym, yoga, salon, spa, haircut, parlour, massage, sports equipment, swimming pool, fitness classes, dietitian
+
+                    Shopping:
+                    - Shopping & Clothing: clothes, shoes, bags, accessories, gifts, Amazon, Flipkart, Myntra, ASOS, Zara, H&M, department stores, mall
+                    - Electronics & Gadgets: phone, laptop, headphones, charger, cables, Apple, Samsung, OnePlus, repair, screen replacement, tech accessories
+
+                    Education & Kids:
+                    - Education: tuition, school fees, college fees, books, stationery, coaching, Udemy, Coursera, exam fees, uniforms, online courses
+                    - Kids & Childcare: daycare, babysitter, toys, diapers, baby food, school supplies, kids clothes, playground, nursery fees
+
+                    Entertainment & Subscriptions:
+                    - Entertainment: movies (PVR, INOX, AMC), concerts, events, amusement parks, gaming, arcade, zoo, museum, sports match, bowling
+                    - Subscriptions: Netflix, Spotify, Disney+, Hotstar, YouTube Premium, Apple One, LinkedIn, iCloud, Google One, Xbox Game Pass, Amazon Prime, Audible
+
+                    Finance:
+                    - Insurance: life insurance, health insurance, vehicle insurance, LIC, home insurance, travel insurance, term plan, premium payment
+                    - Investments & Savings: SIP, mutual fund, stocks, FD, RD, PPF, NPS, crypto, trading (Zerodha, Groww, Robinhood, Coinbase, Binance)
+                    - EMI & Loan: home loan EMI, car loan, personal loan, credit card payment, BNPL, Afterpay, Klarna, Bajaj Finance
+                    - Taxes & Fees: income tax, property tax, GST, council tax, government fees, passport, driving license, RTO, registration fee
+
+                    Social & Giving:
+                    - Gifts & Occasions: birthday gifts, wedding gift, anniversary, festival spending (Diwali, Christmas, Eid, Holi), flowers, greeting cards, celebration
+                    - Charity & Donations: NGO donation, temple/church/mosque offering, crowdfunding, zakat, tithe, relief funds, charity
+
+                    Work:
+                    - Business & Work Expenses: office supplies, client meals, co-working space, work travel, courier, printing, SaaS tools (Slack, Notion, Figma, Zoom, AWS)
+                    - Personal Services: laundry, dry cleaning, tailor, cobbler, domestic help salary, maid, cook, watchman, driver salary, ironing
+
+                    - General: LAST RESORT ONLY — use when truly no other category fits at all
+
+                    VENDOR RULES — be smart, never literal:
+                    - Named brand/shop/app → use exactly that name
+                    - Rent/housing → 'Landlord' or person/company name if given
+                    - EMI/loan → bank name (e.g. 'HDFC Bank', 'SBI', 'Barclays')
+                    - Utility bill → provider name if mentioned, else 'Electricity Board', 'Water Board'
+                    - Domestic help/maid/driver salary → use their name if given, else 'Domestic help'
+                    - Person-to-person → use the person's name
+                    - Street food / unnamed local → 'Street stall' or 'Local shop'
+                    - Government payment → 'Government' or department name
                     - Use 'Unknown' ONLY if there is truly zero vendor information
 
                     AMOUNT:
-                    - Extract numeric value only — no currency symbols
-                    - Support any format: '$20', '€15.50', '£8', '¥500', '₹200', 'Rs 50', '20 dollars', 'twenty euros', '15,99' (European decimal comma)
-                    - Convert word numbers to digits (e.g. 'twenty' → 20)
-                    - If multiple amounts mentioned, pick the total/final one
+                    - Numeric value only, no currency symbols
+                    - Handle: '$20', '€15.50', '£8', '¥500', '₹200', 'Rs 50', '20 dollars', 'twenty euros', '15,99' (European comma)
+                    - Convert word numbers: 'twenty thousand' → 20000, 'five hundred' → 500
+                    - Multiple amounts → pick the final/total
 
-                    CURRENCY:
-                    - Detect from symbols ($, €, £, ¥, ₹, ₩, ฿, etc.) or words ('dollars', 'euros', 'rupees', 'pounds', 'yen', 'won')
-                    - Use ISO 4217 code: USD, EUR, GBP, JPY, INR, KRW, THB, AUD, CAD, SGD, AED, etc.
-                    - If unclear, use 'USD' as default
+                    CURRENCY — ISO 4217 code:
+                    - $ → USD (or AUD/CAD/SGD if context is clear), € → EUR, £ → GBP, ¥ → JPY, ₹ → INR
+                    - 'rupees' → INR, 'dollars' → USD, 'euros' → EUR, 'pounds' → GBP, 'dirhams' → AED, 'ringgit' → MYR, 'baht' → THB, 'won' → KRW, 'yuan/RMB' → CNY
+                    - Default: 'USD' if truly unclear
 
                     DATE:
-                    - Extract if mentioned: relative ('yesterday', 'last Monday', '2 days ago') or absolute ('5th May', '03/15', 'March 15')
-                    - Resolve relative dates against today's date provided below
-                    - Default to today if no date mentioned
+                    - Resolve relative dates ('yesterday', 'last Monday', '2 days ago') from today's date below
+                    - Handle absolute formats: '5th May', '03/15', 'March 15', '15-03'
+                    - Default: today if not mentioned
 
-                    Return ONLY a valid JSON object — no explanation, no markdown, no extra text:
+                    Return ONLY valid JSON, no explanation, no markdown:
                     {""vendor"": ""..."", ""amount"": 0.00, ""currency"": ""USD"", ""category"": ""..."", ""date"": ""yyyy-MM-dd"", ""parsed"": true, ""rawText"": ""...""}",
                    input = $"Parse this expense: {text}\nToday is {DateTime.UtcNow:yyyy-MM-dd}"
                 };
