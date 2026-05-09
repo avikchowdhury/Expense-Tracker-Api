@@ -77,6 +77,7 @@ namespace ExpenseTracker.Api.Extensions
             services.AddAuthorization();
 
             services.AddScoped<IJwtService, JwtService>();
+            services.AddScoped<IAdminUserDeletionService, AdminUserDeletionService>();
             services.AddScoped<IUserRoleService, UserRoleService>();
             services.AddScoped<IBudgetHealthService, BudgetHealthService>();
             services.AddScoped<IBudgetAdvisorService, BudgetAdvisorService>();

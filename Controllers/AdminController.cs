@@ -15,11 +15,16 @@ namespace ExpenseTracker.Api.Controllers
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IUserRoleService _userRoleService;
+        private readonly IAdminUserDeletionService _adminUserDeletionService;
 
-        public AdminController(IUnitOfWork unitOfWork, IUserRoleService userRoleService)
+        public AdminController(
+            IUnitOfWork unitOfWork,
+            IUserRoleService userRoleService,
+            IAdminUserDeletionService adminUserDeletionService)
         {
             _unitOfWork = unitOfWork;
             _userRoleService = userRoleService;
+            _adminUserDeletionService = adminUserDeletionService;
         }
 
         [HttpGet("overview")]
@@ -79,16 +84,27 @@ namespace ExpenseTracker.Api.Controllers
                     Count = group.Count()
                 })
                 .ToDictionaryAsync(item => item.UserId, item => item.Count);
+            var expenseCounts = await _unitOfWork.Expenses.Query()
+                .AsNoTracking()
+                .GroupBy(expense => expense.UserId)
+                .Select(group => new
+                {
+                    UserId = group.Key,
+                    Count = group.Count()
+                })
+                .ToDictionaryAsync(item => item.UserId, item => item.Count);
 
             var response = users.Select(user =>
             {
                 receiptSummaries.TryGetValue(user.Id, out var receiptSummary);
                 budgetCounts.TryGetValue(user.Id, out var budgetCount);
                 categoryCounts.TryGetValue(user.Id, out var categoryCount);
+                expenseCounts.TryGetValue(user.Id, out var expenseCount);
 
                 return BuildUserSummary(
                     user,
                     receiptSummary?.Count ?? 0,
+                    expenseCount,
                     budgetCount,
                     categoryCount,
                     receiptSummary?.LatestReceiptAt);
@@ -133,18 +149,51 @@ namespace ExpenseTracker.Api.Controllers
             await _unitOfWork.SaveChangesAsync();
 
             var receiptCount = await _unitOfWork.Receipts.Query().CountAsync(receipt => receipt.UserId == user.Id);
+            var expenseCount = await _unitOfWork.Expenses.Query().CountAsync(expense => expense.UserId == user.Id);
             var budgetCount = await _unitOfWork.Budgets.Query().CountAsync(budget => budget.UserId == user.Id);
             var categoryCount = await _unitOfWork.Categories.Query().CountAsync(category => category.UserId == user.Id);
             var latestReceiptAt = await _unitOfWork.Receipts.Query()
                 .Where(receipt => receipt.UserId == user.Id)
                 .MaxAsync(receipt => (DateTime?)receipt.UploadedAt);
 
-            return Ok(BuildUserSummary(user, receiptCount, budgetCount, categoryCount, latestReceiptAt));
+            return Ok(BuildUserSummary(user, receiptCount, expenseCount, budgetCount, categoryCount, latestReceiptAt));
+        }
+
+        [HttpDelete("users/{userId:int}")]
+        public async Task<ActionResult<AdminDeleteUsersResultDto>> DeleteUser(
+            int userId,
+            CancellationToken cancellationToken)
+        {
+            var result = await _adminUserDeletionService.DeleteUsersAsync(
+                CurrentUserId,
+                new[] { userId },
+                cancellationToken);
+
+            if (result.DeletedCount == 0)
+            {
+                return NotFound(new { message = "User not found." });
+            }
+
+            return Ok(result);
+        }
+
+        [HttpPost("users/bulk-delete")]
+        public async Task<ActionResult<AdminDeleteUsersResultDto>> BulkDeleteUsers(
+            [FromBody] AdminDeleteUsersRequestDto request,
+            CancellationToken cancellationToken)
+        {
+            var result = await _adminUserDeletionService.DeleteUsersAsync(
+                CurrentUserId,
+                request?.UserIds ?? Array.Empty<int>(),
+                cancellationToken);
+
+            return Ok(result);
         }
 
         private AdminUserSummaryDto BuildUserSummary(
             User user,
             int receiptCount,
+            int expenseCount,
             int budgetCount,
             int categoryCount,
             DateTime? latestReceiptAt)
@@ -156,6 +205,7 @@ namespace ExpenseTracker.Api.Controllers
                 Role = NormalizeRole(user.Role) ?? "User",
                 AvatarUrl = BuildAvatarUrl(user.AvatarUrl),
                 ReceiptCount = receiptCount,
+                ExpenseCount = expenseCount,
                 BudgetCount = budgetCount,
                 CategoryCount = categoryCount,
                 LatestReceiptAt = latestReceiptAt

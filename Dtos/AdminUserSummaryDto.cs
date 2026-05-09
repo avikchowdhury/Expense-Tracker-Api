@@ -7,6 +7,7 @@ namespace ExpenseTracker.Api.Dtos
         public string Role { get; set; } = "User";
         public string? AvatarUrl { get; set; }
         public int ReceiptCount { get; set; }
+        public int ExpenseCount { get; set; }
         public int BudgetCount { get; set; }
         public int CategoryCount { get; set; }
         public DateTime? LatestReceiptAt { get; set; }
