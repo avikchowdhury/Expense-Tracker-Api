@@ -23,13 +23,39 @@ namespace ExpenseTracker.Api.Services
             _configuration = configuration;
         }
 
-        public async Task<bool> SendOtpEmailAsync(string toEmail, string otp, CancellationToken cancellationToken = default)
+        public bool IsConfigured()
         {
-            var settings = _configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
-            if (string.IsNullOrWhiteSpace(settings.SmtpHost) ||
-                string.IsNullOrWhiteSpace(settings.FromAddress) ||
-                string.IsNullOrWhiteSpace(settings.Username) ||
-                string.IsNullOrWhiteSpace(settings.Password))
+            var settings = GetSettings();
+            return HasRequiredSettings(settings);
+        }
+
+        public Task<bool> SendOtpEmailAsync(string toEmail, string otp, CancellationToken cancellationToken = default)
+        {
+            return SendEmailAsync(
+                toEmail,
+                "Your AI Expense Tracker OTP",
+                $"Your OTP is {otp}. It will expire in 10 minutes.",
+                cancellationToken: cancellationToken);
+        }
+
+        public Task<bool> SendPasswordResetEmailAsync(string toEmail, string token, CancellationToken cancellationToken = default)
+        {
+            return SendEmailAsync(
+                toEmail,
+                "Password Reset - AI Expense Tracker",
+                $"Your password reset code is: {token}\n\nIt will expire in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.",
+                cancellationToken: cancellationToken);
+        }
+
+        public async Task<bool> SendEmailAsync(
+            string toEmail,
+            string subject,
+            string body,
+            bool isHtml = false,
+            CancellationToken cancellationToken = default)
+        {
+            var settings = GetSettings();
+            if (!HasRequiredSettings(settings))
             {
                 return false;
             }
@@ -43,9 +69,9 @@ namespace ExpenseTracker.Api.Services
             using var message = new MailMessage
             {
                 From = new MailAddress(settings.FromAddress, settings.FromName),
-                Subject = "Your AI Expense Tracker OTP",
-                Body = $"Your OTP is {otp}. It will expire in 10 minutes.",
-                IsBodyHtml = false
+                Subject = subject,
+                Body = body,
+                IsBodyHtml = isHtml
             };
 
             message.To.Add(toEmail);
@@ -55,36 +81,17 @@ namespace ExpenseTracker.Api.Services
             return true;
         }
 
-        public async Task<bool> SendPasswordResetEmailAsync(string toEmail, string token, CancellationToken cancellationToken = default)
+        private EmailSettings GetSettings()
         {
-            var settings = _configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
-            if (string.IsNullOrWhiteSpace(settings.SmtpHost) ||
-                string.IsNullOrWhiteSpace(settings.FromAddress) ||
-                string.IsNullOrWhiteSpace(settings.Username) ||
-                string.IsNullOrWhiteSpace(settings.Password))
-            {
-                return false;
-            }
+            return _configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
+        }
 
-            using var client = new SmtpClient(settings.SmtpHost, settings.SmtpPort)
-            {
-                EnableSsl = settings.EnableSsl,
-                Credentials = new NetworkCredential(settings.Username, settings.Password)
-            };
-
-            using var message = new MailMessage
-            {
-                From = new MailAddress(settings.FromAddress, settings.FromName),
-                Subject = "Password Reset — AI Expense Tracker",
-                Body = $"Your password reset code is: {token}\n\nIt will expire in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.",
-                IsBodyHtml = false
-            };
-
-            message.To.Add(toEmail);
-
-            using var registration = cancellationToken.Register(() => client.SendAsyncCancel());
-            await client.SendMailAsync(message, cancellationToken);
-            return true;
+        private static bool HasRequiredSettings(EmailSettings settings)
+        {
+            return !string.IsNullOrWhiteSpace(settings.SmtpHost) &&
+                !string.IsNullOrWhiteSpace(settings.FromAddress) &&
+                !string.IsNullOrWhiteSpace(settings.Username) &&
+                !string.IsNullOrWhiteSpace(settings.Password);
         }
     }
 }

@@ -42,12 +42,14 @@ namespace ExpenseTracker.Api.Extensions
             {
                 RootPath = storageRootPath,
                 AvatarsPath = Path.Combine(storageRootPath, storageOptions.AvatarsFolder),
-                ReceiptsPath = Path.Combine(storageRootPath, storageOptions.ReceiptsFolder)
+                ReceiptsPath = Path.Combine(storageRootPath, storageOptions.ReceiptsFolder),
+                NotificationPreviewsPath = Path.Combine(storageRootPath, "notification-previews")
             };
 
             Directory.CreateDirectory(storagePaths.RootPath);
             Directory.CreateDirectory(storagePaths.AvatarsPath);
             Directory.CreateDirectory(storagePaths.ReceiptsPath);
+            Directory.CreateDirectory(storagePaths.NotificationPreviewsPath);
 
             services.AddSingleton(storagePaths);
 
@@ -84,6 +86,8 @@ namespace ExpenseTracker.Api.Extensions
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IReceiptService, ReceiptService>();
             services.AddScoped<IAnalyticsService, AnalyticsService>();
+            services.AddSingleton<INotificationDigestService, NotificationDigestService>();
+            services.AddHostedService<NotificationDigestBackgroundService>();
             services.AddHttpClient<IAIService, AIService>();
             services.AddMemoryCache();
 

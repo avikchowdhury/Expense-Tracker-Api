@@ -12,5 +12,6 @@ namespace ExpenseTracker.Api.Services
         public string RootPath { get; init; } = string.Empty;
         public string AvatarsPath { get; init; } = string.Empty;
         public string ReceiptsPath { get; init; } = string.Empty;
+        public string NotificationPreviewsPath { get; init; } = string.Empty;
     }
 }
