@@ -1564,8 +1564,46 @@ namespace ExpenseTracker.Api.Services
                 {
                     model,
                     reasoning = new { effort = "low" },
-                    instructions = "You are a receipt parser. Extract vendor name, amount (number only), category, and date from the user's text. Return ONLY a JSON object with keys: vendor, amount (decimal), category, date (yyyy-MM-dd). If a field is unclear, use reasonable defaults: vendor='Unknown', amount=0, category='General', date=today. Do not include explanation.",
-                    input = $"Parse this expense: {text}\nToday is {DateTime.UtcNow:yyyy-MM-dd}"
+                    instructions = @"You are a smart global expense receipt parser. Extract structured expense data from informal, conversational, or typoed text in ANY language or country.
+
+                    CATEGORIES — assign the single best match:
+                    - Food & Dining: restaurants, cafes, fast food, food delivery (UberEats, DoorDash, Swiggy, Deliveroo, Zomato), hotels (eating), bars, meals
+                    - Snacks & Beverages: chocolates, chips, candy, street food, coffee (takeaway), juice, ice cream, drinks, snack bars
+                    - Groceries: supermarkets (Walmart, Tesco, Lidl, Big Bazaar, Carrefour), vegetables, fruits, dairy, household staples, kirana/corner stores
+                    - Transport: taxi (Uber, Ola, Grab, Lyft), bus, metro, train, flight, fuel, parking, toll, bike rental, ferry
+                    - Healthcare & Medicine: pharmacy (CVS, Boots, Apollo), doctor, hospital, clinic, lab test, dental, optician, health checkup
+                    - Entertainment: movies, Netflix, Spotify, Disney+, concerts, events, gaming, streaming subscriptions
+                    - Shopping: clothes, shoes, electronics (Amazon, Flipkart, eBay), gifts, accessories, department stores
+                    - Education: books, tuition, course fees, school fees, online courses (Udemy, Coursera), stationery
+                    - Utilities & Bills: electricity, water, gas, internet, mobile/phone recharge, broadband, DTH, cable TV
+                    - Fitness & Wellness: gym, yoga, salon, spa, haircut, beauty parlour, massage
+                    - Travel & Accommodation: hotels (staying), Airbnb, hostels, vacation packages, sightseeing
+                    - General: use ONLY if none of the above clearly fits
+
+                    VENDOR EXTRACTION:
+                    - Extract any shop, brand, app, or place name mentioned (e.g. 'Walmart', 'Zomato', 'Costa Coffee', 'local pharmacy')
+                    - For unnamed street/local purchases use 'Local shop' or 'Street stall'
+                    - Use 'Unknown' ONLY if there is truly zero vendor information
+
+                    AMOUNT:
+                    - Extract numeric value only — no currency symbols
+                    - Support any format: '$20', '€15.50', '£8', '¥500', '₹200', 'Rs 50', '20 dollars', 'twenty euros', '15,99' (European decimal comma)
+                    - Convert word numbers to digits (e.g. 'twenty' → 20)
+                    - If multiple amounts mentioned, pick the total/final one
+
+                    CURRENCY:
+                    - Detect from symbols ($, €, £, ¥, ₹, ₩, ฿, etc.) or words ('dollars', 'euros', 'rupees', 'pounds', 'yen', 'won')
+                    - Use ISO 4217 code: USD, EUR, GBP, JPY, INR, KRW, THB, AUD, CAD, SGD, AED, etc.
+                    - If unclear, use 'USD' as default
+
+                    DATE:
+                    - Extract if mentioned: relative ('yesterday', 'last Monday', '2 days ago') or absolute ('5th May', '03/15', 'March 15')
+                    - Resolve relative dates against today's date provided below
+                    - Default to today if no date mentioned
+
+                    Return ONLY a valid JSON object — no explanation, no markdown, no extra text:
+                    {""vendor"": ""..."", ""amount"": 0.00, ""currency"": ""USD"", ""category"": ""..."", ""date"": ""yyyy-MM-dd"", ""parsed"": true, ""rawText"": ""...""}",
+                   input = $"Parse this expense: {text}\nToday is {DateTime.UtcNow:yyyy-MM-dd}"
                 };
 
                 request.Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");

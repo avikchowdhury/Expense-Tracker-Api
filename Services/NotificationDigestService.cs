@@ -35,7 +35,6 @@ namespace ExpenseTracker.Api.Services
                 {
                     IsOperational = true,
                     DeliveryMode = "smtp",
-                    Message = "Weekly and monthly digests are ready to send through the configured SMTP server."
                 };
             }
 
