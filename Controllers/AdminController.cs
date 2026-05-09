@@ -1,30 +1,32 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
+using ExpenseTracker.Api.Security;
+using ExpenseTracker.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/admin")]
-    [Authorize(Roles = "Admin")]
-    public class AdminController : ControllerBase
+    [AppAuthorize(AppRoles.Admin)]
+    public class AdminController : AppControllerBase
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IUserRoleService _userRoleService;
 
-        public AdminController(IUnitOfWork unitOfWork)
+        public AdminController(IUnitOfWork unitOfWork, IUserRoleService userRoleService)
         {
             _unitOfWork = unitOfWork;
+            _userRoleService = userRoleService;
         }
 
         [HttpGet("overview")]
         public async Task<ActionResult<AdminOverviewDto>> GetOverview()
         {
             var totalUsers = await _unitOfWork.Users.Query().CountAsync();
-            var adminCount = await _unitOfWork.Users.Query().CountAsync(user => user.Role == "Admin");
+            var adminCount = await _userRoleService.CountUsersInRoleAsync(AppRoles.Admin);
             var receiptCount = await _unitOfWork.Receipts.Query().CountAsync();
             var trackedReceiptSpend = await _unitOfWork.Receipts.Query().SumAsync(receipt => (decimal?)receipt.TotalAmount) ?? 0m;
 
@@ -100,13 +102,7 @@ namespace ExpenseTracker.Api.Controllers
             int userId,
             [FromBody] UpdateUserRoleDto request)
         {
-            var currentUserId = GetCurrentUserId();
-            if (currentUserId is null)
-            {
-                return Unauthorized();
-            }
-
-            var normalizedRole = NormalizeRole(request.Role);
+            var normalizedRole = _userRoleService.NormalizeRole(request.Role);
             if (normalizedRole is null)
             {
                 return BadRequest(new { message = "Role must be either Admin or User." });
@@ -118,22 +114,22 @@ namespace ExpenseTracker.Api.Controllers
                 return NotFound(new { message = "User not found." });
             }
 
-            if (user.Id == currentUserId.Value && !string.Equals(user.Role, normalizedRole, StringComparison.OrdinalIgnoreCase))
+            if (user.Id == CurrentUserId && !string.Equals(user.Role, normalizedRole, StringComparison.OrdinalIgnoreCase))
             {
                 return BadRequest(new { message = "Use another admin account to change your own role." });
             }
 
-            if (string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase)
-                && normalizedRole == "User")
+            if (string.Equals(user.Role, AppRoles.Admin, StringComparison.OrdinalIgnoreCase)
+                && normalizedRole == AppRoles.User)
             {
-                var adminCount = await _unitOfWork.Users.Query().CountAsync(existingUser => existingUser.Role == "Admin");
+                var adminCount = await _userRoleService.CountUsersInRoleAsync(AppRoles.Admin);
                 if (adminCount <= 1)
                 {
                     return BadRequest(new { message = "At least one admin account must remain in the workspace." });
                 }
             }
 
-            user.Role = normalizedRole;
+            await _userRoleService.SetRoleAsync(user, normalizedRole);
             await _unitOfWork.SaveChangesAsync();
 
             var receiptCount = await _unitOfWork.Receipts.Query().CountAsync(receipt => receipt.UserId == user.Id);
@@ -144,12 +140,6 @@ namespace ExpenseTracker.Api.Controllers
                 .MaxAsync(receipt => (DateTime?)receipt.UploadedAt);
 
             return Ok(BuildUserSummary(user, receiptCount, budgetCount, categoryCount, latestReceiptAt));
-        }
-
-        private int? GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            return int.TryParse(userIdClaim, out var userId) ? userId : null;
         }
 
         private AdminUserSummaryDto BuildUserSummary(

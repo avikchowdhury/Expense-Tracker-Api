@@ -1,19 +1,17 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
-using Microsoft.AspNetCore.Authorization;
+using ExpenseTracker.Api.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
-using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
-    public class CategoriesController : ControllerBase
+    [AppAuthorize]
+    public class CategoriesController : AppControllerBase
     {
         private readonly IUnitOfWork _unitOfWork;
         public CategoriesController(IUnitOfWork unitOfWork)
@@ -25,10 +23,8 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetCategories()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
             var categories = await _unitOfWork.Categories.Query()
-                .Where(c => c.UserId == userId)
+                .Where(c => c.UserId == CurrentUserId)
                 .Select(c => new CategoryDto { Id = c.Id, Name = c.Name })
                 .ToListAsync();
             return Ok(categories);
@@ -37,11 +33,8 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("rules")]
         public async Task<IActionResult> GetVendorRules()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             var rules = await _unitOfWork.VendorCategoryRules.Query()
-                .Where(rule => rule.UserId == userId)
+                .Where(rule => rule.UserId == CurrentUserId)
                 .Include(rule => rule.Category)
                 .OrderBy(rule => rule.VendorPattern)
                 .Select(rule => new VendorCategoryRuleDto
@@ -62,14 +55,12 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> AddCategory([FromBody] CategoryDto categoryDto)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
             if (string.IsNullOrWhiteSpace(categoryDto.Name))
                 return BadRequest("Category name is required.");
-            var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == userId && c.Name == categoryDto.Name);
+            var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == CurrentUserId && c.Name == categoryDto.Name);
             if (exists)
                 return Conflict("Category already exists.");
-            var category = new Category { UserId = userId, Name = categoryDto.Name };
+            var category = new Category { UserId = CurrentUserId, Name = categoryDto.Name };
             await _unitOfWork.Categories.AddAsync(category);
             await _unitOfWork.SaveChangesAsync();
             categoryDto.Id = category.Id;
@@ -80,15 +71,13 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateCategory(int id, [FromBody] CategoryDto categoryDto)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
             if (string.IsNullOrWhiteSpace(categoryDto.Name))
                 return BadRequest("Category name is required.");
-            var category = await _unitOfWork.Categories.Query().FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId);
+            var category = await _unitOfWork.Categories.Query().FirstOrDefaultAsync(c => c.Id == id && c.UserId == CurrentUserId);
             if (category == null)
                 return NotFound();
             // Prevent duplicate names
-            var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == userId && c.Name == categoryDto.Name && c.Id != id);
+            var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == CurrentUserId && c.Name == categoryDto.Name && c.Id != id);
             if (exists)
                 return Conflict("Category already exists.");
             category.Name = categoryDto.Name;
@@ -99,9 +88,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteCategory(int id)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-            var category = await _unitOfWork.Categories.Query().FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId);
+            var category = await _unitOfWork.Categories.Query().FirstOrDefaultAsync(c => c.Id == id && c.UserId == CurrentUserId);
             if (category == null)
                 return NotFound();
             _unitOfWork.Categories.Remove(category);
@@ -112,26 +99,23 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("rules")]
         public async Task<IActionResult> AddVendorRule([FromBody] VendorCategoryRuleDto ruleDto)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             var normalizedPattern = NormalizeVendorPattern(ruleDto.VendorPattern);
             if (string.IsNullOrWhiteSpace(normalizedPattern))
                 return BadRequest("Vendor pattern is required.");
 
             var category = await _unitOfWork.Categories.Query()
-                .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == userId);
+                .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == CurrentUserId);
             if (category == null)
                 return BadRequest("Select a valid category.");
 
             var exists = await _unitOfWork.VendorCategoryRules.Query()
-                .AnyAsync(rule => rule.UserId == userId && rule.VendorPattern.ToLower() == normalizedPattern.ToLower());
+                .AnyAsync(rule => rule.UserId == CurrentUserId && rule.VendorPattern.ToLower() == normalizedPattern.ToLower());
             if (exists)
                 return Conflict("A rule for this vendor pattern already exists.");
 
             var rule = new VendorCategoryRule
             {
-                UserId = userId,
+                UserId = CurrentUserId,
                 CategoryId = category.Id,
                 VendorPattern = normalizedPattern,
                 IsActive = ruleDto.IsActive
@@ -154,26 +138,23 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPut("rules/{id}")]
         public async Task<IActionResult> UpdateVendorRule(int id, [FromBody] VendorCategoryRuleDto ruleDto)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             var normalizedPattern = NormalizeVendorPattern(ruleDto.VendorPattern);
             if (string.IsNullOrWhiteSpace(normalizedPattern))
                 return BadRequest("Vendor pattern is required.");
 
             var rule = await _unitOfWork.VendorCategoryRules.Query()
                 .Include(existingRule => existingRule.Category)
-                .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == userId);
+                .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == CurrentUserId);
             if (rule == null)
                 return NotFound();
 
             var category = await _unitOfWork.Categories.Query()
-                .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == userId);
+                .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == CurrentUserId);
             if (category == null)
                 return BadRequest("Select a valid category.");
 
             var exists = await _unitOfWork.VendorCategoryRules.Query().AnyAsync(existingRule =>
-                existingRule.UserId == userId &&
+                existingRule.UserId == CurrentUserId &&
                 existingRule.VendorPattern.ToLower() == normalizedPattern.ToLower() &&
                 existingRule.Id != id);
             if (exists)
@@ -199,11 +180,8 @@ namespace ExpenseTracker.Api.Controllers
         [HttpDelete("rules/{id}")]
         public async Task<IActionResult> DeleteVendorRule(int id)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             var rule = await _unitOfWork.VendorCategoryRules.Query()
-                .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == userId);
+                .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == CurrentUserId);
             if (rule == null)
                 return NotFound();
 

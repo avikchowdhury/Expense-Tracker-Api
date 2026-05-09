@@ -10,14 +10,12 @@ namespace ExpenseTracker.Api.Tests.Controllers;
 public class AIControllerTests
 {
     [Fact]
-    public async Task GetForecast_ReturnsUnauthorized_WhenUserIdClaimIsMissing()
+    public async Task GetForecast_ThrowsUnauthorized_WhenUserIdClaimIsMissing()
     {
         var service = new FakeAiService();
         var controller = CreateController(service);
 
-        var result = await controller.GetForecast();
-
-        Assert.IsType<UnauthorizedResult>(result);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => controller.GetForecast());
         Assert.Null(service.LastForecastUserId);
     }
 

@@ -10,6 +10,8 @@ namespace ExpenseTracker.Api.Data
         }
 
         public DbSet<User> Users => Set<User>();
+        public DbSet<Role> Roles => Set<Role>();
+        public DbSet<UserRoleMapping> UserRoleMappings => Set<UserRoleMapping>();
         public DbSet<Receipt> Receipts => Set<Receipt>();
         public DbSet<Expense> Expenses => Set<Expense>();
         public DbSet<Budget> Budgets => Set<Budget>();
@@ -23,6 +25,27 @@ namespace ExpenseTracker.Api.Data
             {
                 user.HasKey(x => x.Id);
                 user.HasIndex(x => x.Email).IsUnique();
+            });
+
+            modelBuilder.Entity<Role>(role =>
+            {
+                role.HasKey(x => x.Id);
+                role.HasIndex(x => x.NormalizedName).IsUnique();
+                role.Property(x => x.Name).HasMaxLength(64);
+                role.Property(x => x.NormalizedName).HasMaxLength(64);
+            });
+
+            modelBuilder.Entity<UserRoleMapping>(mapping =>
+            {
+                mapping.HasKey(x => new { x.UserId, x.RoleId });
+                mapping.HasOne(x => x.User)
+                    .WithMany(x => x.RoleMappings)
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                mapping.HasOne(x => x.Role)
+                    .WithMany(x => x.UserMappings)
+                    .HasForeignKey(x => x.RoleId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<Receipt>(receipt =>

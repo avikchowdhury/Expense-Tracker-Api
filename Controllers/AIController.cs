@@ -1,17 +1,15 @@
 using ExpenseTracker.Api.Services;
 using ExpenseTracker.Api.Dtos;
-using Microsoft.AspNetCore.Authorization;
+using ExpenseTracker.Api.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
-    public class AIController : ControllerBase
+    [AppAuthorize]
+    public class AIController : AppControllerBase
     {
         private readonly IAIService _aiService;
 
@@ -36,91 +34,61 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("insights")]
         public async Task<IActionResult> GetInsights()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            {
-                return Unauthorized();
-            }
-
-            var result = await _aiService.GetInsightsAsync(userId);
+            var result = await _aiService.GetInsightsAsync(CurrentUserId);
             return Ok(result);
         }
 
         [HttpGet("subscriptions")]
         public async Task<IActionResult> GetSubscriptions()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            {
-                return Unauthorized();
-            }
-
-            var result = await _aiService.GetSubscriptionsAsync(userId);
+            var result = await _aiService.GetSubscriptionsAsync(CurrentUserId);
             return Ok(result);
         }
 
         [HttpPost("chat")]
         public async Task<IActionResult> Chat([FromBody] AiChatRequestDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            {
-                return Unauthorized();
-            }
-
             if (string.IsNullOrWhiteSpace(request.Message))
             {
                 return BadRequest(new { message = "Please send a question for the assistant." });
             }
 
-            var result = await _aiService.ChatAsync(userId, request.Message);
+            var result = await _aiService.ChatAsync(CurrentUserId, request.Message);
             return Ok(result);
         }
 
         [HttpGet("spending-anomalies")]
         public async Task<IActionResult> GetSpendingAnomalies()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _aiService.GetSpendingAnomaliesAsync(userId);
+            var result = await _aiService.GetSpendingAnomaliesAsync(CurrentUserId);
             return Ok(result);
         }
 
         [HttpGet("monthly-summary")]
         public async Task<IActionResult> GetMonthlySummary()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _aiService.GetMonthlySummaryAsync(userId);
+            var result = await _aiService.GetMonthlySummaryAsync(CurrentUserId);
             return Ok(result);
         }
 
         [HttpGet("forecast")]
         public async Task<IActionResult> GetForecast()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _aiService.GetSpendingForecastAsync(userId);
+            var result = await _aiService.GetSpendingForecastAsync(CurrentUserId);
             return Ok(result);
         }
 
         [HttpPost("forecast/what-if")]
         public async Task<IActionResult> GetWhatIfForecast([FromBody] WhatIfForecastRequestDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _aiService.GetWhatIfForecastAsync(userId, request ?? new WhatIfForecastRequestDto());
+            var result = await _aiService.GetWhatIfForecastAsync(CurrentUserId, request ?? new WhatIfForecastRequestDto());
             return Ok(result);
         }
 
         [HttpGet("weekly-summary")]
         public async Task<IActionResult> GetWeeklySummary()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _aiService.GetWeeklySummaryAsync(userId);
+            var result = await _aiService.GetWeeklySummaryAsync(CurrentUserId);
             return Ok(result);
         }
 
@@ -137,20 +105,14 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("vendor-analysis")]
         public async Task<IActionResult> GetVendorAnalysis()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _aiService.GetVendorAnalysisAsync(userId);
+            var result = await _aiService.GetVendorAnalysisAsync(CurrentUserId);
             return Ok(result);
         }
 
         [HttpPost("check-duplicate")]
         public async Task<IActionResult> CheckDuplicate([FromBody] Dtos.DuplicateCheckRequestDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _aiService.CheckDuplicateReceiptAsync(userId, request.Vendor, request.Amount, request.Date);
+            var result = await _aiService.CheckDuplicateReceiptAsync(CurrentUserId, request.Vendor, request.Amount, request.Date);
             return Ok(result);
         }
     }

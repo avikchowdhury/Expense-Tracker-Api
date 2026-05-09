@@ -1,21 +1,19 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
+using ExpenseTracker.Api.Security;
 using ExpenseTracker.Api.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
-    public class BudgetsController : ControllerBase
+    [AppAuthorize]
+    public class BudgetsController : AppControllerBase
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IBudgetHealthService _budgetHealthService;
@@ -34,10 +32,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetBudgetById(int id)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
+            var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == CurrentUserId);
 
             if (budget == null) return NotFound();
 
@@ -55,9 +50,6 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("status")]
         public async Task<IActionResult> GetBudgetStatus([FromQuery] string? period)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             DateTime start, end;
 
             if (!string.IsNullOrEmpty(period) && DateTime.TryParse(period + "-01", out var parsed))
@@ -72,7 +64,7 @@ namespace ExpenseTracker.Api.Controllers
                 end = start.AddMonths(1);
             }
 
-            var snapshot = await _budgetHealthService.GetBudgetHealthAsync(userId, start, end);
+            var snapshot = await _budgetHealthService.GetBudgetHealthAsync(CurrentUserId, start, end);
 
             return Ok(new
             {
@@ -86,21 +78,15 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("advisor")]
         public async Task<IActionResult> GetBudgetAdvisor()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var snapshot = await _budgetAdvisorService.GetBudgetAdvisorAsync(userId);
+            var snapshot = await _budgetAdvisorService.GetBudgetAdvisorAsync(CurrentUserId);
             return Ok(snapshot);
         }
 
         [HttpGet]
         public async Task<IActionResult> GetBudgets()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             var budgets = await _unitOfWork.Budgets.Query()
-                .Where(x => x.UserId == userId)
+                .Where(x => x.UserId == CurrentUserId)
                 .ToListAsync();
 
             return Ok(budgets.Select(x => new BudgetDto
@@ -117,12 +103,9 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateBudget([FromBody] BudgetDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             var budget = new Budget
             {
-                UserId = userId,
+                UserId = CurrentUserId,
                 Category = request.Category,
                 MonthlyLimit = request.MonthlyLimit,
                 CurrentSpent = 0m,
@@ -133,7 +116,7 @@ namespace ExpenseTracker.Api.Controllers
             await _unitOfWork.SaveChangesAsync();
 
             request.Id = budget.Id;
-            request.UserId = userId;
+            request.UserId = CurrentUserId;
             request.CurrentSpent = budget.CurrentSpent;
             request.LastReset = budget.LastReset;
 
@@ -143,10 +126,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateBudget(int id, [FromBody] BudgetDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
+            var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == CurrentUserId);
             if (budget == null) return NotFound();
 
             budget.Category = request.Category;
@@ -170,10 +150,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteBudget(int id)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
+            var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == CurrentUserId);
             if (budget == null) return NotFound();
 
             _unitOfWork.Budgets.Remove(budget);

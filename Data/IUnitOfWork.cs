@@ -5,6 +5,8 @@ namespace ExpenseTracker.Api.Data
     public interface IUnitOfWork
     {
         IRepository<User> Users { get; }
+        IRepository<Role> Roles { get; }
+        IRepository<UserRoleMapping> UserRoleMappings { get; }
         IRepository<Receipt> Receipts { get; }
         IRepository<Expense> Expenses { get; }
         IRepository<Budget> Budgets { get; }

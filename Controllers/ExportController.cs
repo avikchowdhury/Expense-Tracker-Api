@@ -1,20 +1,18 @@
 using ExpenseTracker.Api.Data;
+using ExpenseTracker.Api.Security;
 using ExpenseTracker.Api.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
 using System.IO;
 using System.Linq;
-using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
-    public class ExportController : ControllerBase
+    [AppAuthorize]
+    public class ExportController : AppControllerBase
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IAIService _aiService;
@@ -29,9 +27,7 @@ namespace ExpenseTracker.Api.Controllers
         public async Task<IActionResult> ExportToExcel()
         {
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-            var receipts = await _unitOfWork.Receipts.Query().Where(r => r.UserId == userId).OrderByDescending(r => r.UploadedAt).ToListAsync();
+            var receipts = await _unitOfWork.Receipts.Query().Where(r => r.UserId == CurrentUserId).OrderByDescending(r => r.UploadedAt).ToListAsync();
             using var package = new ExcelPackage();
             var ws = package.Workbook.Worksheets.Add("Receipts");
             ws.Cells[1, 1].Value = "Date";
@@ -55,20 +51,17 @@ namespace ExpenseTracker.Api.Controllers
         public async Task<IActionResult> ExportAiReport()
         {
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             var now = System.DateTime.UtcNow;
             var monthStart = new System.DateTime(now.Year, now.Month, 1);
 
             var receipts = await _unitOfWork.Receipts.Query()
-                .Where(r => r.UserId == userId && r.UploadedAt >= monthStart)
+                .Where(r => r.UserId == CurrentUserId && r.UploadedAt >= monthStart)
                 .OrderByDescending(r => r.UploadedAt)
                 .ToListAsync();
 
-            var summary = await _aiService.GetMonthlySummaryAsync(userId);
-            var forecast = await _aiService.GetSpendingForecastAsync(userId);
-            var vendorAnalysis = await _aiService.GetVendorAnalysisAsync(userId);
+            var summary = await _aiService.GetMonthlySummaryAsync(CurrentUserId);
+            var forecast = await _aiService.GetSpendingForecastAsync(CurrentUserId);
+            var vendorAnalysis = await _aiService.GetVendorAnalysisAsync(CurrentUserId);
 
             using var package = new ExcelPackage();
 

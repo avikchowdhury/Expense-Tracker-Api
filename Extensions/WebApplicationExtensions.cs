@@ -1,4 +1,5 @@
 using ExpenseTracker.Api.Data;
+using ExpenseTracker.Api.Middleware;
 using ExpenseTracker.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -13,10 +14,14 @@ namespace ExpenseTracker.Api.Extensions
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<ExpenseTrackerDbContext>();
                 dbContext.Database.Migrate();
+
+                var userRoleService = scope.ServiceProvider.GetRequiredService<IUserRoleService>();
+                userRoleService.EnsureDefaultRolesAsync().GetAwaiter().GetResult();
             }
 
             var storagePaths = app.Services.GetRequiredService<FileStoragePaths>();
 
+            app.UseMiddleware<ApiExceptionMiddleware>();
             app.UseSwagger();
             app.UseSwaggerUI(options =>
             {
@@ -26,6 +31,7 @@ namespace ExpenseTracker.Api.Extensions
 
             app.UseCors("AllowLocalhost");
 
+            app.UseRouting();
             app.UseHttpsRedirection();
             app.UseStaticFiles();
             app.UseStaticFiles(new StaticFileOptions
@@ -35,7 +41,8 @@ namespace ExpenseTracker.Api.Extensions
             });
 
             app.UseAuthentication();
-            app.UseAuthorization();
+            app.UseMiddleware<CurrentUserContextMiddleware>();
+            app.UseMiddleware<AppAuthorizationMiddleware>();
 
             app.MapControllers();
 

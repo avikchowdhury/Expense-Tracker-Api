@@ -15,6 +15,8 @@ namespace ExpenseTracker.Api.Models
 
         public string Role { get; set; } = "User";
 
+        public ICollection<UserRoleMapping> RoleMappings { get; set; } = new List<UserRoleMapping>();
+
         public ICollection<Receipt> Receipts { get; set; } = new List<Receipt>();
 
         public ICollection<Expense> Expenses { get; set; } = new List<Expense>();

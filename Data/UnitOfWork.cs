@@ -6,6 +6,8 @@ namespace ExpenseTracker.Api.Data
     {
         private readonly ExpenseTrackerDbContext _dbContext;
         private IRepository<User>? _users;
+        private IRepository<Role>? _roles;
+        private IRepository<UserRoleMapping>? _userRoleMappings;
         private IRepository<Receipt>? _receipts;
         private IRepository<Expense>? _expenses;
         private IRepository<Budget>? _budgets;
@@ -18,6 +20,8 @@ namespace ExpenseTracker.Api.Data
         }
 
         public IRepository<User> Users => _users ??= new Repository<User>(_dbContext);
+        public IRepository<Role> Roles => _roles ??= new Repository<Role>(_dbContext);
+        public IRepository<UserRoleMapping> UserRoleMappings => _userRoleMappings ??= new Repository<UserRoleMapping>(_dbContext);
         public IRepository<Receipt> Receipts => _receipts ??= new Repository<Receipt>(_dbContext);
         public IRepository<Expense> Expenses => _expenses ??= new Repository<Expense>(_dbContext);
         public IRepository<Budget> Budgets => _budgets ??= new Repository<Budget>(_dbContext);

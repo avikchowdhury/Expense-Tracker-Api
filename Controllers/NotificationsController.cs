@@ -1,15 +1,13 @@
 using ExpenseTracker.Api.Services;
-using Microsoft.AspNetCore.Authorization;
+using ExpenseTracker.Api.Security;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
-    public class NotificationsController : ControllerBase
+    [AppAuthorize]
+    public class NotificationsController : AppControllerBase
     {
         private readonly IAIService _aiService;
 
@@ -21,10 +19,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetNotifications()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var notifications = await _aiService.GetNotificationsAsync(userId);
+            var notifications = await _aiService.GetNotificationsAsync(CurrentUserId);
             return Ok(notifications);
         }
     }

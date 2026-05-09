@@ -1,17 +1,15 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Services;
-using Microsoft.AspNetCore.Authorization;
+using ExpenseTracker.Api.Security;
 using Microsoft.AspNetCore.Mvc;
 using System;
-using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/budget/status")]
-    [Authorize]
-    public class BudgetStatusController : ControllerBase
+    [AppAuthorize]
+    public class BudgetStatusController : AppControllerBase
     {
         private readonly IBudgetHealthService _budgetHealthService;
         public BudgetStatusController(IBudgetHealthService budgetHealthService)
@@ -22,13 +20,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetBudgetStatus()
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             var now = DateTime.UtcNow;
             var startOfMonth = new DateTime(now.Year, now.Month, 1);
             var startOfNextMonth = startOfMonth.AddMonths(1);
-            var snapshot = await _budgetHealthService.GetBudgetHealthAsync(userId, startOfMonth, startOfNextMonth);
+            var snapshot = await _budgetHealthService.GetBudgetHealthAsync(CurrentUserId, startOfMonth, startOfNextMonth);
 
             return Ok(new
             {

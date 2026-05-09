@@ -30,6 +30,7 @@ namespace ExpenseTracker.Api.Extensions
                 options.UseSqlServer(connectionString);
             });
             services.AddScoped<IUnitOfWork, UnitOfWork>();
+            services.AddHttpContextAccessor();
 
             services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));
             var storageOptions = configuration.GetSection("Storage").Get<FileStorageOptions>() ?? new FileStorageOptions();
@@ -73,8 +74,10 @@ namespace ExpenseTracker.Api.Extensions
                     ClockSkew = TimeSpan.FromMinutes(2)
                 };
             });
+            services.AddAuthorization();
 
             services.AddScoped<IJwtService, JwtService>();
+            services.AddScoped<IUserRoleService, UserRoleService>();
             services.AddScoped<IBudgetHealthService, BudgetHealthService>();
             services.AddScoped<IBudgetAdvisorService, BudgetAdvisorService>();
             services.AddScoped<IEmailService, EmailService>();

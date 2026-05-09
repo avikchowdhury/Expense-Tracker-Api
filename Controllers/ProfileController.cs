@@ -1,5 +1,6 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Models;
+using ExpenseTracker.Api.Security;
 using ExpenseTracker.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,10 +15,9 @@ using ExpenseTracker.Api.Dtos;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/profile")]
-    [Authorize]
-    public class ProfileController : ControllerBase
+    [AppAuthorize]
+    public class ProfileController : AppControllerBase
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly FileStoragePaths _storagePaths;
@@ -32,26 +32,20 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetProfile()
         {
-            var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
-            if (!int.TryParse(userIdClaim, out var userId))
-                return Unauthorized();
-            var user = await _unitOfWork.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(CurrentUserId);
             if (user == null) return NotFound();
-            return Ok(MapProfile(user));
+            return Ok(MapProfile(user, RequestUser.PrimaryRole));
         }
 
         [HttpPost("avatar")]
         [RequestSizeLimit(5_000_000)] // 5MB limit
         public async Task<IActionResult> UploadAvatar([FromForm] Dtos.AvatarUploadDto dto)
         {
-            var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
-            if (!int.TryParse(userIdClaim, out var userId))
-                return Unauthorized();
-            var user = await _unitOfWork.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(CurrentUserId);
             if (user == null) return NotFound();
             if (dto.File == null || dto.File.Length == 0) return BadRequest("No file uploaded");
             var ext = System.IO.Path.GetExtension(dto.File.FileName);
-            var fileName = $"{userId}{ext}";
+            var fileName = $"{CurrentUserId}{ext}";
             Directory.CreateDirectory(_storagePaths.AvatarsPath);
             var path = Path.Combine(_storagePaths.AvatarsPath, fileName);
             using (var stream = new FileStream(path, FileMode.Create))
@@ -66,10 +60,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPut]
         public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
         {
-            var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
-            if (!int.TryParse(userIdClaim, out var userId))
-                return Unauthorized();
-            var user = await _unitOfWork.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(CurrentUserId);
             if (user == null) return NotFound();
             if (!string.IsNullOrWhiteSpace(dto.Email)) user.Email = dto.Email;
             if (dto.FullName is not null) user.FullName = string.IsNullOrWhiteSpace(dto.FullName) ? null : dto.FullName.Trim();
@@ -100,16 +91,13 @@ namespace ExpenseTracker.Api.Controllers
                 user.WeeklySummaryDay = NormalizeWeeklySummaryDay(dto.WeeklySummaryDay);
 
             await _unitOfWork.SaveChangesAsync();
-            return Ok(MapProfile(user));
+            return Ok(MapProfile(user, RequestUser.PrimaryRole));
         }
 
         [HttpPost("change-password")]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
         {
-            var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
-            if (!int.TryParse(userIdClaim, out var userId))
-                return Unauthorized();
-            var user = await _unitOfWork.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(CurrentUserId);
             if (user == null) return NotFound();
             if (HashPassword(dto.OldPassword) != user.PasswordHash)
                 return BadRequest(new { message = "Old password is incorrect." });
@@ -175,10 +163,10 @@ namespace ExpenseTracker.Api.Controllers
             return $"{Request.Scheme}://{Request.Host}{normalizedPath}";
         }
 
-        private object MapProfile(User user) => new
+        private object MapProfile(User user, string role) => new
         {
             user.Email,
-            user.Role,
+            Role = role,
             AvatarUrl = BuildAvatarUrl(user.AvatarUrl),
             user.FullName,
             user.Phone,

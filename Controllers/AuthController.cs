@@ -1,6 +1,7 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
+using ExpenseTracker.Api.Security;
 using ExpenseTracker.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,12 +15,12 @@ using System.Text;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/[controller]")]
-    public class AuthController : ControllerBase
+    public class AuthController : AppControllerBase
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IJwtService _jwtService;
+        private readonly IUserRoleService _userRoleService;
         private readonly IMemoryCache _cache;
         private readonly IEmailService _emailService;
         private readonly IWebHostEnvironment _environment;
@@ -27,12 +28,14 @@ namespace ExpenseTracker.Api.Controllers
         public AuthController(
             IUnitOfWork unitOfWork,
             IJwtService jwtService,
+            IUserRoleService userRoleService,
             IMemoryCache cache,
             IEmailService emailService,
             IWebHostEnvironment environment)
         {
             _unitOfWork = unitOfWork;
             _jwtService = jwtService;
+            _userRoleService = userRoleService;
             _cache = cache;
             _emailService = emailService;
             _environment = environment;
@@ -60,8 +63,10 @@ namespace ExpenseTracker.Api.Controllers
 
             await _unitOfWork.Users.AddAsync(user);
             await _unitOfWork.SaveChangesAsync();
+            await _userRoleService.SetRoleAsync(user, AppRoles.User);
+            await _unitOfWork.SaveChangesAsync();
 
-            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, NormalizeRole(user.Role));
+            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, user.Role);
             return Ok(tokenResponse);
         }
 
@@ -75,7 +80,9 @@ namespace ExpenseTracker.Api.Controllers
                 return Unauthorized(new { message = "Invalid credentials" });
             }
 
-            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, NormalizeRole(user.Role));
+            var primaryRole = await _userRoleService.GetPrimaryRoleAsync(user);
+            await _unitOfWork.SaveChangesAsync();
+            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, primaryRole);
             return Ok(tokenResponse);
         }
 
@@ -131,8 +138,10 @@ namespace ExpenseTracker.Api.Controllers
             };
             await _unitOfWork.Users.AddAsync(user);
             await _unitOfWork.SaveChangesAsync();
+            await _userRoleService.SetRoleAsync(user, AppRoles.User);
+            await _unitOfWork.SaveChangesAsync();
             _cache.Remove($"otp_{email}");
-            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, NormalizeRole(user.Role));
+            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, user.Role);
             return Ok(tokenResponse);
         }
 
@@ -189,37 +198,32 @@ namespace ExpenseTracker.Api.Controllers
             return Ok(new { message = "Password updated successfully. You can now log in." });
         }
 
-        [Authorize]
+        [AppAuthorize]
         [HttpPost("bootstrap-admin")]
         public async Task<IActionResult> BootstrapAdmin()
         {
-            var userIdClaim = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
-            if (!int.TryParse(userIdClaim, out var userId))
-            {
-                return Unauthorized();
-            }
-
-            var user = await _unitOfWork.Users.FindAsync(userId);
+            var user = await _unitOfWork.Users.FindAsync(CurrentUserId);
             if (user is null)
             {
                 return NotFound(new { message = "User not found." });
             }
 
-            if (string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            var primaryRole = await _userRoleService.GetPrimaryRoleAsync(user);
+            if (string.Equals(primaryRole, AppRoles.Admin, StringComparison.OrdinalIgnoreCase))
             {
-                return Ok(_jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, "Admin"));
+                return Ok(_jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, AppRoles.Admin));
             }
 
-            var adminExists = await _unitOfWork.Users.Query().AnyAsync(existingUser => existingUser.Role == "Admin");
+            var adminExists = await _userRoleService.AnyUserInRoleAsync(AppRoles.Admin);
             if (adminExists)
             {
                 return BadRequest(new { message = "An admin account already exists. Ask an admin to grant access." });
             }
 
-            user.Role = "Admin";
+            await _userRoleService.SetRoleAsync(user, AppRoles.Admin);
             await _unitOfWork.SaveChangesAsync();
 
-            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, "Admin");
+            var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, AppRoles.Admin);
             return Ok(tokenResponse);
         }
 
@@ -250,13 +254,6 @@ namespace ExpenseTracker.Api.Controllers
             {
                 return false;
             }
-        }
-
-        private static string NormalizeRole(string? role)
-        {
-            return string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase)
-                ? "Admin"
-                : "User";
         }
 
         public class OtpEmailRequest

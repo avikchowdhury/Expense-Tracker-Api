@@ -1,16 +1,14 @@
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
+using ExpenseTracker.Api.Security;
 using ExpenseTracker.Api.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace ExpenseTracker.Api.Controllers
 {
-    [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
-    public class ReceiptsController : ControllerBase
+    [AppAuthorize]
+    public class ReceiptsController : AppControllerBase
     {
         private readonly IReceiptService _receiptService;
 
@@ -26,9 +24,7 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (request?.File == null || request.File.Length == 0)
                 return BadRequest("Please provide a receipt file.");
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-            var receipt = await _receiptService.StoreReceiptAsync(userId, request.File);
+            var receipt = await _receiptService.StoreReceiptAsync(CurrentUserId, request.File);
             if (!string.IsNullOrEmpty(request.Category)) receipt.Category = request.Category;
             if (!string.IsNullOrEmpty(request.Notes)) receipt.ParsedContentJson = request.Notes; // or add a Notes field if needed
             var dto = new ReceiptDto
@@ -50,8 +46,6 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("quick-add")]
         public async Task<IActionResult> QuickAddReceipt([FromBody] QuickAddReceiptDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
             if (string.IsNullOrWhiteSpace(request.Vendor) || request.Amount <= 0)
                 return BadRequest("Vendor and a positive amount are required.");
 
@@ -60,7 +54,7 @@ namespace ExpenseTracker.Api.Controllers
                 : DateTime.UtcNow;
 
             var receipt = await _receiptService.QuickAddReceiptAsync(
-                userId, request.Vendor, request.Amount, request.Category ?? "Uncategorized", date);
+                CurrentUserId, request.Vendor, request.Amount, request.Category ?? "Uncategorized", date);
 
             return Ok(new ReceiptDto
             {
@@ -81,9 +75,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetReceipts([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null, [FromQuery] string? category = null, [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null, [FromQuery] bool? markedDuplicate = null)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-            var result = await _receiptService.GetReceiptsPageAsync(userId, new ReceiptQueryDto
+            var result = await _receiptService.GetReceiptsPageAsync(CurrentUserId, new ReceiptQueryDto
             {
                 Page = page,
                 PageSize = pageSize,
@@ -100,9 +92,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateReceipt(int id, [FromBody] ReceiptDto dto)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-            var receipt = await _receiptService.UpdateReceiptAsync(userId, id, dto.Category, dto.ParsedContentJson);
+            var receipt = await _receiptService.UpdateReceiptAsync(CurrentUserId, id, dto.Category, dto.ParsedContentJson);
             if (receipt == null) return NotFound();
             dto.Id = receipt.Id;
             dto.UserId = receipt.UserId;
@@ -118,9 +108,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteReceipt(int id)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-            var deleted = await _receiptService.DeleteReceiptAsync(userId, id);
+            var deleted = await _receiptService.DeleteReceiptAsync(CurrentUserId, id);
             if (!deleted) return NotFound();
             return Ok(new { success = true });
         }
@@ -128,9 +116,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("{id}/file")]
         public async Task<IActionResult> DownloadReceiptFile(int id)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-            var receipt = await _receiptService.GetReceiptByIdAsync(userId, id);
+            var receipt = await _receiptService.GetReceiptByIdAsync(CurrentUserId, id);
             if (receipt == null || string.IsNullOrEmpty(receipt.BlobUrl) || !System.IO.File.Exists(receipt.BlobUrl))
                 return NotFound();
             var fileBytes = await System.IO.File.ReadAllBytesAsync(receipt.BlobUrl);
@@ -141,12 +127,7 @@ namespace ExpenseTracker.Api.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetReceipt(int id)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            {
-                return Unauthorized();
-            }
-
-            var receipt = await _receiptService.GetReceiptByIdAsync(userId, id);
+            var receipt = await _receiptService.GetReceiptByIdAsync(CurrentUserId, id);
             if (receipt == null)
                 return NotFound();
 
@@ -170,43 +151,31 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("bulk/categorize")]
         public async Task<IActionResult> BulkCategorize([FromBody] BulkCategorizeReceiptsDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
             if (string.IsNullOrWhiteSpace(request.Category))
                 return BadRequest(new { message = "Category is required." });
 
-            var result = await _receiptService.BulkCategorizeAsync(userId, request.ReceiptIds, request.Category);
+            var result = await _receiptService.BulkCategorizeAsync(CurrentUserId, request.ReceiptIds, request.Category);
             return Ok(result);
         }
 
         [HttpPost("bulk/delete")]
         public async Task<IActionResult> BulkDelete([FromBody] BulkReceiptSelectionDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _receiptService.BulkDeleteAsync(userId, request.ReceiptIds);
+            var result = await _receiptService.BulkDeleteAsync(CurrentUserId, request.ReceiptIds);
             return Ok(result);
         }
 
         [HttpPost("bulk/apply-vendor-rules")]
         public async Task<IActionResult> BulkApplyVendorRules([FromBody] BulkReceiptSelectionDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _receiptService.BulkApplyVendorRulesAsync(userId, request.ReceiptIds);
+            var result = await _receiptService.BulkApplyVendorRulesAsync(CurrentUserId, request.ReceiptIds);
             return Ok(result);
         }
 
         [HttpPost("bulk/mark-duplicates")]
         public async Task<IActionResult> BulkMarkDuplicates([FromBody] BulkMarkDuplicateReceiptsDto request)
         {
-            if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-                return Unauthorized();
-
-            var result = await _receiptService.BulkMarkDuplicatesAsync(userId, request.ReceiptIds, request.MarkAsDuplicate);
+            var result = await _receiptService.BulkMarkDuplicatesAsync(CurrentUserId, request.ReceiptIds, request.MarkAsDuplicate);
             return Ok(result);
         }
     }
