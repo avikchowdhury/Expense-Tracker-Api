@@ -1,17 +1,20 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Models;
 using ExpenseTracker.Api.Security;
-using Microsoft.EntityFrameworkCore;
 
 namespace ExpenseTracker.Api.Services
 {
     public sealed class UserRoleService : IUserRoleService
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IUserRoleRepository _userRoleRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public UserRoleService(ExpenseTrackerDbContext dbContext)
+        public UserRoleService(
+            IUserRoleRepository userRoleRepository,
+            IUnitOfWork unitOfWork)
         {
-            _dbContext = dbContext;
+            _userRoleRepository = userRoleRepository;
+            _unitOfWork = unitOfWork;
         }
 
         public string? NormalizeRole(string? role)
@@ -34,12 +37,11 @@ namespace ExpenseTracker.Api.Services
             foreach (var roleName in AppRoles.All)
             {
                 var normalizedName = roleName.ToUpperInvariant();
-                var exists = await _dbContext.Roles
-                    .AnyAsync(role => role.NormalizedName == normalizedName, cancellationToken);
+                var exists = await _userRoleRepository.RoleExistsAsync(normalizedName, cancellationToken);
 
                 if (!exists)
                 {
-                    await _dbContext.Roles.AddAsync(new Role
+                    await _userRoleRepository.AddRoleAsync(new Role
                     {
                         Name = roleName,
                         NormalizedName = normalizedName
@@ -47,7 +49,7 @@ namespace ExpenseTracker.Api.Services
                 }
             }
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         public async Task<string> GetPrimaryRoleAsync(User user, CancellationToken cancellationToken = default)
@@ -67,14 +69,7 @@ namespace ExpenseTracker.Api.Services
         {
             await EnsureDefaultRolesAsync(cancellationToken);
 
-            if (!_dbContext.Entry(user).Collection(existingUser => existingUser.RoleMappings).IsLoaded)
-            {
-                await _dbContext.Entry(user)
-                    .Collection(existingUser => existingUser.RoleMappings)
-                    .Query()
-                    .Include(mapping => mapping.Role)
-                    .LoadAsync(cancellationToken);
-            }
+            await _userRoleRepository.LoadRoleMappingsAsync(user, cancellationToken);
 
             if (user.RoleMappings.Count == 0)
             {
@@ -96,13 +91,11 @@ namespace ExpenseTracker.Api.Services
 
             await EnsureDefaultRolesAsync(cancellationToken);
 
-            await _dbContext.Entry(user)
-                .Collection(existingUser => existingUser.RoleMappings)
-                .LoadAsync(cancellationToken);
+            await _userRoleRepository.LoadRoleMappingsAsync(user, cancellationToken);
 
             if (user.RoleMappings.Count > 0)
             {
-                _dbContext.UserRoleMappings.RemoveRange(user.RoleMappings);
+                _userRoleRepository.RemoveRoleMappings(user.RoleMappings);
                 user.RoleMappings.Clear();
             }
 
@@ -122,15 +115,10 @@ namespace ExpenseTracker.Api.Services
                 ?? throw new ArgumentException("Role must be either Admin or User.", nameof(role));
             var normalizedName = normalizedRole.ToUpperInvariant();
 
-            return await _dbContext.Users
-                .Where(user => user.Role == normalizedRole)
-                .Select(user => user.Id)
-                .Union(
-                    _dbContext.UserRoleMappings
-                        .Where(mapping => mapping.Role.NormalizedName == normalizedName)
-                        .Select(mapping => mapping.UserId))
-                .Distinct()
-                .CountAsync(cancellationToken);
+            return await _userRoleRepository.CountUsersInRoleAsync(
+                normalizedRole,
+                normalizedName,
+                cancellationToken);
         }
 
         public async Task<bool> AnyUserInRoleAsync(string role, CancellationToken cancellationToken = default)
@@ -151,21 +139,15 @@ namespace ExpenseTracker.Api.Services
                 AssignedAt = DateTime.UtcNow
             });
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            await _dbContext.Entry(user)
-                .Collection(existingUser => existingUser.RoleMappings)
-                .Query()
-                .Include(mapping => mapping.Role)
-                .LoadAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _userRoleRepository.LoadRoleMappingsAsync(user, cancellationToken);
         }
 
         private async Task<Role> GetRoleEntityAsync(string role, CancellationToken cancellationToken)
         {
             var normalizedName = role.ToUpperInvariant();
 
-            return await _dbContext.Roles.FirstAsync(
-                existingRole => existingRole.NormalizedName == normalizedName,
-                cancellationToken);
+            return await _userRoleRepository.GetRoleByNormalizedNameAsync(normalizedName, cancellationToken);
         }
     }
 }

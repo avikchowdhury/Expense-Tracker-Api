@@ -30,6 +30,9 @@ namespace ExpenseTracker.Api.Extensions
                 options.UseSqlServer(connectionString);
             });
             services.AddScoped<IUnitOfWork, UnitOfWork>();
+            services.AddScoped<IUserDigestRepository, UserDigestRepository>();
+            services.AddScoped<IUserRoleRepository, UserRoleRepository>();
+            services.AddScoped<IAdminUserDeletionRepository, AdminUserDeletionRepository>();
             services.AddHttpContextAccessor();
 
             services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));

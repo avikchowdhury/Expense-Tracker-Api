@@ -23,10 +23,15 @@ public sealed class AdminUserDeletionServiceTests
         {
             await using var dbContext = CreateDbContext();
             SeedDeleteScenario(dbContext, avatarsPath, receiptsPath);
+            var unitOfWork = new UnitOfWork(dbContext);
+            var userRoleRepository = new UserRoleRepository(dbContext);
+            var userRoleService = new UserRoleService(userRoleRepository, unitOfWork);
+            var adminUserDeletionRepository = new AdminUserDeletionRepository(dbContext);
 
             var service = new AdminUserDeletionService(
-                dbContext,
-                new UserRoleService(dbContext),
+                adminUserDeletionRepository,
+                unitOfWork,
+                userRoleService,
                 new FileStoragePaths
                 {
                     RootPath = tempRoot,
@@ -70,10 +75,15 @@ public sealed class AdminUserDeletionServiceTests
     {
         await using var dbContext = CreateDbContext();
         SeedAdminOnlyScenario(dbContext);
+        var unitOfWork = new UnitOfWork(dbContext);
+        var userRoleRepository = new UserRoleRepository(dbContext);
+        var userRoleService = new UserRoleService(userRoleRepository, unitOfWork);
+        var adminUserDeletionRepository = new AdminUserDeletionRepository(dbContext);
 
         var service = new AdminUserDeletionService(
-            dbContext,
-            new UserRoleService(dbContext),
+            adminUserDeletionRepository,
+            unitOfWork,
+            userRoleService,
             new FileStoragePaths
             {
                 RootPath = "storage",

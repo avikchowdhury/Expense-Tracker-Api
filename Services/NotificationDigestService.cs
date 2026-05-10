@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Text;
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
-using Microsoft.EntityFrameworkCore;
 
 namespace ExpenseTracker.Api.Services
 {
@@ -35,6 +34,7 @@ namespace ExpenseTracker.Api.Services
                 {
                     IsOperational = true,
                     DeliveryMode = "smtp",
+                    Message = "Weekly and monthly digests are ready to send through the configured SMTP server."
                 };
             }
 
@@ -63,21 +63,11 @@ namespace ExpenseTracker.Api.Services
             }
 
             using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ExpenseTrackerDbContext>();
+            var userDigestRepository = scope.ServiceProvider.GetRequiredService<IUserDigestRepository>();
             var aiService = scope.ServiceProvider.GetRequiredService<IAIService>();
             var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
-            var user = await dbContext.Users
-                .AsNoTracking()
-                .Where(candidate => candidate.Id == userId)
-                .Select(candidate => new UserDigestTarget(
-                    candidate.Id,
-                    candidate.Email,
-                    candidate.FullName,
-                    candidate.WeeklySummaryDay,
-                    candidate.WeeklySummaryEmailEnabled,
-                    candidate.MonthlyReportEmailEnabled))
-                .FirstOrDefaultAsync(cancellationToken);
+            var user = await userDigestRepository.GetUserDigestTargetAsync(userId, cancellationToken);
 
             if (user == null)
             {
@@ -101,7 +91,7 @@ namespace ExpenseTracker.Api.Services
         public async Task ProcessDueDigestsAsync(CancellationToken cancellationToken = default)
         {
             using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ExpenseTrackerDbContext>();
+            var userDigestRepository = scope.ServiceProvider.GetRequiredService<IUserDigestRepository>();
             var aiService = scope.ServiceProvider.GetRequiredService<IAIService>();
             var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
             var now = DateTimeOffset.Now;
@@ -109,16 +99,7 @@ namespace ExpenseTracker.Api.Services
             var monthlyPeriodKey = $"{now:yyyy-MM}";
             var weeklyPeriodKey = $"{now:yyyy-MM-dd}";
 
-            var users = await dbContext.Users
-                .AsNoTracking()
-                .Select(candidate => new UserDigestTarget(
-                    candidate.Id,
-                    candidate.Email,
-                    candidate.FullName,
-                    candidate.WeeklySummaryDay,
-                    candidate.WeeklySummaryEmailEnabled,
-                    candidate.MonthlyReportEmailEnabled))
-                .ToListAsync(cancellationToken);
+            var users = await userDigestRepository.ListUserDigestTargetsAsync(cancellationToken);
 
             foreach (var user in users)
             {
@@ -395,13 +376,5 @@ namespace ExpenseTracker.Api.Services
 
             return builder.ToString();
         }
-
-        private sealed record UserDigestTarget(
-            int Id,
-            string Email,
-            string? FullName,
-            string WeeklySummaryDay,
-            bool WeeklySummaryEmailEnabled,
-            bool MonthlyReportEmailEnabled);
     }
 }

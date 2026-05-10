@@ -2,24 +2,26 @@ using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
 using ExpenseTracker.Api.Security;
-using Microsoft.EntityFrameworkCore;
 
 namespace ExpenseTracker.Api.Services
 {
     public sealed class AdminUserDeletionService : IAdminUserDeletionService
     {
-        private readonly ExpenseTrackerDbContext _dbContext;
+        private readonly IAdminUserDeletionRepository _adminUserDeletionRepository;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IUserRoleService _userRoleService;
         private readonly FileStoragePaths _storagePaths;
         private readonly ILogger<AdminUserDeletionService> _logger;
 
         public AdminUserDeletionService(
-            ExpenseTrackerDbContext dbContext,
+            IAdminUserDeletionRepository adminUserDeletionRepository,
+            IUnitOfWork unitOfWork,
             IUserRoleService userRoleService,
             FileStoragePaths storagePaths,
             ILogger<AdminUserDeletionService> logger)
         {
-            _dbContext = dbContext;
+            _adminUserDeletionRepository = adminUserDeletionRepository;
+            _unitOfWork = unitOfWork;
             _userRoleService = userRoleService;
             _storagePaths = storagePaths;
             _logger = logger;
@@ -45,11 +47,9 @@ namespace ExpenseTracker.Api.Services
                 throw new ArgumentException("Use another admin account to delete your own account.");
             }
 
-            var users = await _dbContext.Users
-                .Include(user => user.RoleMappings)
-                .ThenInclude(mapping => mapping.Role)
-                .Where(user => normalizedUserIds.Contains(user.Id))
-                .ToListAsync(cancellationToken);
+            var users = await _adminUserDeletionRepository.GetUsersWithRolesAsync(
+                normalizedUserIds,
+                cancellationToken);
 
             if (users.Count == 0)
             {
@@ -76,68 +76,23 @@ namespace ExpenseTracker.Api.Services
                 .Select(user => user.Id)
                 .ToArray();
 
-            var receipts = await _dbContext.Receipts
-                .Where(receipt => deletedUserIds.Contains(receipt.UserId))
-                .ToListAsync(cancellationToken);
-            var expenses = await _dbContext.Expenses
-                .Where(expense => deletedUserIds.Contains(expense.UserId))
-                .ToListAsync(cancellationToken);
-            var budgets = await _dbContext.Budgets
-                .Where(budget => deletedUserIds.Contains(budget.UserId))
-                .ToListAsync(cancellationToken);
-            var vendorRules = await _dbContext.VendorCategoryRules
-                .Where(rule => deletedUserIds.Contains(rule.UserId))
-                .ToListAsync(cancellationToken);
-            var categories = await _dbContext.Categories
-                .Where(category => deletedUserIds.Contains(category.UserId))
-                .ToListAsync(cancellationToken);
-            var roleMappings = await _dbContext.UserRoleMappings
-                .Where(mapping => deletedUserIds.Contains(mapping.UserId))
-                .ToListAsync(cancellationToken);
+            var deletionData = await _adminUserDeletionRepository.GetDeletionDataAsync(
+                deletedUserIds,
+                cancellationToken);
 
             var avatarPaths = users
                 .Select(user => ResolveAvatarPath(user.AvatarUrl))
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Cast<string>()
                 .ToArray();
-            var receiptPaths = receipts
+            var receiptPaths = deletionData.Receipts
                 .Select(receipt => receipt.BlobUrl)
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Cast<string>()
                 .ToArray();
 
-            if (expenses.Count > 0)
-            {
-                _dbContext.Expenses.RemoveRange(expenses);
-            }
-
-            if (vendorRules.Count > 0)
-            {
-                _dbContext.VendorCategoryRules.RemoveRange(vendorRules);
-            }
-
-            if (receipts.Count > 0)
-            {
-                _dbContext.Receipts.RemoveRange(receipts);
-            }
-
-            if (budgets.Count > 0)
-            {
-                _dbContext.Budgets.RemoveRange(budgets);
-            }
-
-            if (roleMappings.Count > 0)
-            {
-                _dbContext.UserRoleMappings.RemoveRange(roleMappings);
-            }
-
-            if (categories.Count > 0)
-            {
-                _dbContext.Categories.RemoveRange(categories);
-            }
-
-            _dbContext.Users.RemoveRange(users);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            _adminUserDeletionRepository.RemoveDeletionData(deletionData, users);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             DeleteFilesBestEffort(receiptPaths, _storagePaths.ReceiptsPath, "receipt");
             DeleteFilesBestEffort(avatarPaths, _storagePaths.AvatarsPath, "avatar");
@@ -146,19 +101,19 @@ namespace ExpenseTracker.Api.Services
             {
                 RequestedCount = normalizedUserIds.Length,
                 DeletedCount = users.Count,
-                DeletedReceiptCount = receipts.Count,
-                DeletedExpenseCount = expenses.Count,
-                DeletedBudgetCount = budgets.Count,
-                DeletedCategoryCount = categories.Count,
-                DeletedVendorRuleCount = vendorRules.Count,
+                DeletedReceiptCount = deletionData.Receipts.Count,
+                DeletedExpenseCount = deletionData.Expenses.Count,
+                DeletedBudgetCount = deletionData.Budgets.Count,
+                DeletedCategoryCount = deletionData.Categories.Count,
+                DeletedVendorRuleCount = deletionData.VendorRules.Count,
                 DeletedUserIds = deletedUserIds,
                 Message = BuildSuccessMessage(
                     users.Count,
-                    receipts.Count,
-                    expenses.Count,
-                    budgets.Count,
-                    categories.Count,
-                    vendorRules.Count)
+                    deletionData.Receipts.Count,
+                    deletionData.Expenses.Count,
+                    deletionData.Budgets.Count,
+                    deletionData.Categories.Count,
+                    deletionData.VendorRules.Count)
             };
         }
 

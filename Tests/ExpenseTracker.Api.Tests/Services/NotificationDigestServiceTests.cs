@@ -66,6 +66,7 @@ public sealed class NotificationDigestServiceTests
         services.AddLogging();
         services.AddDbContext<ExpenseTrackerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));
+        services.AddScoped<IUserDigestRepository, UserDigestRepository>();
         services.AddScoped<IAIService, FakeAiService>();
         services.AddScoped<IEmailService, FakeEmailService>();
         services.AddSingleton(new FileStoragePaths
