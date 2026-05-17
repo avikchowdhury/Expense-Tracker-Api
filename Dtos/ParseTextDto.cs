@@ -1,7 +1,11 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace ExpenseTracker.Api.Dtos
 {
     public class ParseTextRequestDto
     {
+        [Required]
+        [NotBlank]
         public string Text { get; set; } = string.Empty;
     }
 

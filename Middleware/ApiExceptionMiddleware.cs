@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ExpenseTracker.Api.Dtos;
+using ExpenseTracker.Shared.Exceptions;
 
 namespace ExpenseTracker.Api.Middleware
 {
@@ -33,6 +34,7 @@ namespace ExpenseTracker.Api.Middleware
         {
             var (statusCode, message) = exception switch
             {
+                ApiRequestException apiRequestException => (apiRequestException.StatusCode, apiRequestException.Message),
                 UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, "Authentication is required for this resource."),
                 ArgumentException argumentException => (StatusCodes.Status400BadRequest, argumentException.Message),
                 BadHttpRequestException badHttpRequestException => (badHttpRequestException.StatusCode, badHttpRequestException.Message),

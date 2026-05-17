@@ -101,7 +101,7 @@ namespace ExpenseTracker.Api.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> CreateBudget([FromBody] BudgetDto request)
+        public async Task<IActionResult> CreateBudget([FromBody] BudgetWriteDto request)
         {
             var budget = new Budget
             {
@@ -115,23 +115,25 @@ namespace ExpenseTracker.Api.Controllers
             await _unitOfWork.Budgets.AddAsync(budget);
             await _unitOfWork.SaveChangesAsync();
 
-            request.Id = budget.Id;
-            request.UserId = CurrentUserId;
-            request.CurrentSpent = budget.CurrentSpent;
-            request.LastReset = budget.LastReset;
-
-            return CreatedAtAction(nameof(GetBudgets), new { id = budget.Id }, request);
+            return CreatedAtAction(nameof(GetBudgetById), new { id = budget.Id }, new BudgetDto
+            {
+                Id = budget.Id,
+                UserId = CurrentUserId,
+                Category = budget.Category,
+                MonthlyLimit = budget.MonthlyLimit,
+                CurrentSpent = budget.CurrentSpent,
+                LastReset = budget.LastReset
+            });
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateBudget(int id, [FromBody] BudgetDto request)
+        public async Task<IActionResult> UpdateBudget(int id, [FromBody] BudgetWriteDto request)
         {
             var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == CurrentUserId);
             if (budget == null) return NotFound();
 
             budget.Category = request.Category;
             budget.MonthlyLimit = request.MonthlyLimit;
-            budget.CurrentSpent = request.CurrentSpent;
             // Always set LastReset to current UTC time on update
             budget.LastReset = DateTime.UtcNow;
             await _unitOfWork.SaveChangesAsync();

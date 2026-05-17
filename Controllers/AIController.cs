@@ -96,7 +96,9 @@ namespace ExpenseTracker.Api.Controllers
         public async Task<IActionResult> ParseText([FromBody] Dtos.ParseTextRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Text))
+            {
                 return BadRequest(new { message = "Text is required." });
+            }
 
             var result = await _aiService.ParseTextExpenseAsync(request.Text);
             return Ok(result);

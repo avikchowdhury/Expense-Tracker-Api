@@ -40,6 +40,7 @@ bld/
 
 # Local development settings (do not commit secrets)
 appsettings.Development.json
+storage/avatars/
 
 # Visual Studio 2017 auto generated files
 Generated\ Files/
