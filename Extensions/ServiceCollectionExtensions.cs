@@ -1,6 +1,7 @@
 using ExpenseTracker.Api.Configuration;
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Services;
+using ExpenseTracker.Shared.Constants;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -25,8 +26,13 @@ namespace ExpenseTracker.Api.Extensions
 
             services.AddDbContext<ExpenseTrackerDbContext>(options =>
             {
-                var connectionString = configuration.GetConnectionString("DefaultConnection") ??
-                    "Server=(localdb)\\mssqllocaldb;Database=ExpenseTrackerDb;Trusted_Connection=True;MultipleActiveResultSets=true";
+                var connectionString = configuration.GetConnectionString(ApplicationText.Configuration.DefaultConnectionName);
+                if (string.IsNullOrWhiteSpace(connectionString))
+                {
+                    throw new InvalidOperationException(
+                        $"Connection string '{ApplicationText.Configuration.DefaultConnectionName}' is missing from configuration.");
+                }
+
                 options.UseSqlServer(connectionString);
             });
             services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -35,8 +41,8 @@ namespace ExpenseTracker.Api.Extensions
             services.AddScoped<IAdminUserDeletionRepository, AdminUserDeletionRepository>();
             services.AddHttpContextAccessor();
 
-            services.Configure<FileStorageOptions>(configuration.GetSection("Storage"));
-            var storageOptions = configuration.GetSection("Storage").Get<FileStorageOptions>() ?? new FileStorageOptions();
+            services.Configure<FileStorageOptions>(configuration.GetSection(ApplicationText.Configuration.StorageSection));
+            var storageOptions = configuration.GetSection(ApplicationText.Configuration.StorageSection).Get<FileStorageOptions>() ?? new FileStorageOptions();
             var storageRootPath = Path.IsPathRooted(storageOptions.RootPath)
                 ? storageOptions.RootPath
                 : Path.GetFullPath(Path.Combine(environment.ContentRootPath, storageOptions.RootPath));
@@ -46,7 +52,7 @@ namespace ExpenseTracker.Api.Extensions
                 RootPath = storageRootPath,
                 AvatarsPath = Path.Combine(storageRootPath, storageOptions.AvatarsFolder),
                 ReceiptsPath = Path.Combine(storageRootPath, storageOptions.ReceiptsFolder),
-                NotificationPreviewsPath = Path.Combine(storageRootPath, "notification-previews")
+                NotificationPreviewsPath = Path.Combine(storageRootPath, ApplicationText.Storage.NotificationPreviewFolder)
             };
 
             Directory.CreateDirectory(storagePaths.RootPath);
@@ -56,8 +62,8 @@ namespace ExpenseTracker.Api.Extensions
 
             services.AddSingleton(storagePaths);
 
-            services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
-            var jwtConfig = configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
+            services.Configure<JwtSettings>(configuration.GetSection(ApplicationText.Configuration.JwtSettingsSection));
+            var jwtConfig = configuration.GetSection(ApplicationText.Configuration.JwtSettingsSection).Get<JwtSettings>() ?? new JwtSettings();
             var key = Encoding.UTF8.GetBytes(jwtConfig.Secret);
 
             services.AddAuthentication(options =>
@@ -96,10 +102,10 @@ namespace ExpenseTracker.Api.Extensions
 
             services.AddCors(options =>
             {
-                options.AddPolicy("AllowLocalhost", policy =>
+                options.AddPolicy(ApplicationText.Policies.AllowLocalhost, policy =>
                 {
                     policy
-                        .WithOrigins("http://localhost:4200", "https://localhost:4200")
+                        .WithOrigins(ApplicationText.Policies.AllowedOrigins)
                         .AllowAnyHeader()
                         .AllowAnyMethod()
                         .AllowCredentials();

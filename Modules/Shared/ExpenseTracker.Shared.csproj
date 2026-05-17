@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Dtos\**\*.cs" Link="Dtos\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\Models\**\*.cs" Link="Models\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\Configuration\JwtSettings.cs" Link="Configuration\JwtSettings.cs" />
+    <Compile Include="..\..\Security\AppRoles.cs" Link="Security\AppRoles.cs" />
+    <Compile Include="..\..\Extensions\ParsingHelpers.cs" Link="Extensions\ParsingHelpers.cs" />
+    <Compile Include="..\..\Services\FileStoragePaths.cs" Link="Services\FileStoragePaths.cs" />
+  </ItemGroup>
+
+</Project>

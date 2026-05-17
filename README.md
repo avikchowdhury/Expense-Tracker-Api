@@ -1,346 +1,186 @@
 # ExpenseTracker.Api
 
-A production-ready REST API for the AI-powered Expense Tracker application. Built with ASP.NET Core 8, Entity Framework Core, and Groq AI — it handles receipt parsing, budget management, financial forecasting, anomaly detection, and natural-language expense entry.
+Backend for the Expense Tracker application, built with ASP.NET Core 8 and EF Core.
 
----
+This solution is now split into three projects so the web API, business logic, and shared contracts are separated more cleanly.
 
-## Table of Contents
+## Solution Structure
 
-1. [Tech Stack](#tech-stack)
-2. [Architecture](#architecture)
-3. [Modules & Endpoints](#modules--endpoints)
-4. [Configuration](#configuration)
-5. [How to Run](#how-to-run)
-6. [Database](#database)
-7. [AI Integration](#ai-integration)
+```text
+ExpenseTracker.Api.sln
+|
++-- ExpenseTracker.Api                 # Web host / API shell
+|   +-- Program.cs
+|   +-- Controllers/
+|   +-- Middleware/
+|   +-- Extensions/
+|   +-- appsettings.json
+|   +-- appsettings.Development.json  # local-only secrets and machine config
+|
++-- Modules/
+|   +-- Service/
+|   |   +-- ExpenseTracker.Services.csproj
+|   |   +-- GlobalUsings.cs
+|   |
+|   +-- Shared/
+|       +-- ExpenseTracker.Shared.csproj
+|       +-- Constants/
+|           +-- ApplicationText.cs
+|
++-- Data/                             # compiled into ExpenseTracker.Services
++-- Services/                         # compiled into ExpenseTracker.Services
++-- Dtos/                             # compiled into ExpenseTracker.Shared
++-- Models/                           # compiled into ExpenseTracker.Shared
++-- Configuration/                    # shared settings types
++-- Security/                         # shared auth constants + API auth attributes
++-- Tests/
+    +-- ExpenseTracker.Api.Tests/
+```
 
----
+## Project Responsibilities
 
-## Tech Stack
+### `ExpenseTracker.Api`
 
-| Layer | Technology |
-|---|---|
-| Framework | ASP.NET Core 8 (`net8.0`) |
-| Language | C# 12 (nullable enabled, implicit usings) |
-| ORM | Entity Framework Core 9 (Code-First) |
-| Database | SQL Server 2019+ |
-| Auth | JWT Bearer — HS256, configurable expiry |
-| AI | Groq via OpenAI Responses API (`/v1/responses`) |
-| File Storage | Azure Blob Storage (`Azure.Storage.Blobs 12.27`) |
-| Excel Export | EPPlus 7 |
-| JSON | Newtonsoft.Json 13 |
-| API Docs | Swashbuckle / Swagger UI (`/swagger`) |
-| Secrets | .NET User Secrets (`UserSecretsId: expense-tracker-api-otp-mailer`) |
+Owns the HTTP layer only:
 
----
+- `Controllers/`
+- `Middleware/`
+- API-specific `Extensions/`
+- `Program.cs`
+- web startup and dependency injection wiring
 
-📊 Expense Tracker API – Architecture Overview
+### `ExpenseTracker.Services`
 
-This project follows a clean layered architecture to ensure scalability, maintainability, and separation of concerns. The application is structured into distinct layers, each responsible for a specific part of the system.
+Owns application logic and persistence:
 
-🧠 Architecture Overview
+- `Services/`
+- `Data/`
+- repository and unit-of-work implementations
+- EF Core `DbContext`
+- background services
 
-The request flow follows this structure:
+### `ExpenseTracker.Shared`
 
-Controller → Service Layer → Data Layer → Database
+Owns contracts and reusable shared types:
 
-Each layer is loosely coupled and communicates through interfaces, making the system easy to extend and test.
+- `Dtos/`
+- `Models/`
+- shared constants in `Modules/Shared/Constants/ApplicationText.cs`
+- shared settings types such as `Configuration/JwtSettings.cs`
+- shared helper types such as role constants and parsing helpers
 
-🔹 Controllers (API Layer)
+## Important Note About File Layout
 
-Controllers act as the entry point for all HTTP requests.
+The source code is still physically organized in top-level folders like `Services/`, `Data/`, `Dtos/`, and `Models/`, but those folders are compiled by different projects through project-file includes.
 
-Handle incoming API requests
-Perform basic validation
-Delegate processing to the service layer
-Return appropriate HTTP responses
+That means:
 
-Each controller represents a specific domain (e.g., Expenses, Users, Categories).
+- files under `Controllers/`, `Middleware/`, and API web extensions belong to `ExpenseTracker.Api`
+- files under `Services/` and `Data/` belong to `ExpenseTracker.Services`
+- files under `Dtos/`, `Models/`, and selected shared helpers/settings belong to `ExpenseTracker.Shared`
 
-🔹 Services (Business Logic Layer)
+## Request Flow
 
-The service layer contains the core business logic of the application.
-
-Implements application rules and workflows
-Processes and transforms data
-Interacts with the data layer via Unit of Work
-Uses interfaces for better abstraction and testability
-
-Example services include:
-
-Expense Service
-Email Service
-AI Service
-🔹 Data Layer (Persistence Layer)
-
-Responsible for all database interactions using Entity Framework Core.
-
-✅ DbContext
-AppDbContext manages database connection and entity mapping
-✅ Repository Pattern
-One repository per entity
-Encapsulates CRUD operations
-✅ Unit of Work
-Coordinates multiple repositories
-Ensures all operations are committed in a single transaction
-🔹 Models (Entities)
-
-Represents the database tables.
-
-Defines the structure of data stored in the database
-Used internally within the data layer
-
-Examples:
-
-Expense
-User
-Category
-🔹 DTOs (Data Transfer Objects)
-
-Used to transfer data between layers.
-
-Prevents exposing internal models
-Improves security and flexibility
-Shapes request and response payloads
-🔹 Migrations
-Managed by Entity Framework Core
-Tracks and applies database schema changes
-Enables version control for database structure
-🔹 Program.cs (Application Configuration)
-
-Handles application setup and configuration.
-
-Registers services using Dependency Injection
-Configures middleware pipeline (Authentication, Authorization, etc.)
-Initializes application settings
-🚀 Key Design Principles
-Separation of Concerns – Each layer has a clear responsibility
-Dependency Injection – Promotes loose coupling
-Repository Pattern – Abstracts data access logic
-Unit of Work – Ensures transactional consistency
-DTO Usage – Secures and structures data flow
-✅ Benefits of This Architecture
-Easy to maintain and extend
-Highly testable
-Clean and organized codebase
-Scalable for future enhancements
-
-**Patterns used:**
-- **Repository + Unit of Work** — all data access goes through `IUnitOfWork`, no raw DbContext calls in controllers
-- **Interface-driven services** — every service has a matching `I*Service` interface registered in DI
-- **JWT middleware** — all non-auth routes require `[Authorize]`; admin routes additionally require the `Admin` role
-- **AI fallback** — if the model returns no valid JSON, every AI method returns a safe default DTO rather than throwing
-
----
-
-## Modules & Endpoints
-
-### Auth — `/api/auth`
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `/api/auth/register` | Create account (returns OTP) |
-| POST | `/api/auth/verify-otp` | Confirm email OTP, receive JWT |
-| POST | `/api/auth/login` | Username + password login, receive JWT |
-| POST | `/api/auth/resend-otp` | Resend verification OTP |
-
-### Receipts — `/api/receipts`
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/receipts` | List receipts (paged, filterable) |
-| POST | `/api/receipts` | Upload receipt file + AI parse |
-| GET | `/api/receipts/{id}` | Get single receipt |
-| PUT | `/api/receipts/{id}` | Update receipt fields |
-| DELETE | `/api/receipts/{id}` | Delete receipt |
-
-### Budgets — `/api/budgets`
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/budgets` | List all budgets for user |
-| POST | `/api/budgets` | Create monthly category budget |
-| PUT | `/api/budgets/{id}` | Update budget amount |
-| DELETE | `/api/budgets/{id}` | Delete budget |
-| GET | `/api/budgets/status` | Current month spend vs all budgets |
-
-### Categories — `/api/categories`
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/categories` | List user categories |
-| POST | `/api/categories` | Create category |
-| PUT | `/api/categories/{id}` | Rename / update category |
-| DELETE | `/api/categories/{id}` | Delete category |
-| GET | `/api/categories/{id}/vendor-rules` | List vendor rules for category |
-| POST | `/api/categories/{id}/vendor-rules` | Add vendor rule pattern |
-| DELETE | `/api/categories/{id}/vendor-rules/{ruleId}` | Remove vendor rule |
-
-### Analytics — `/api/analytics`
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/analytics/monthly-summary` | Month-over-month totals |
-| GET | `/api/analytics/category-breakdown` | Spend per category (current month) |
-| GET | `/api/analytics/recurring` | Detected recurring/subscription expenses |
-
-### AI — `/api/ai`
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/ai/insights` | AI overview: narrative + top risks |
-| GET | `/api/ai/budget-advice` | Per-budget pace advice |
-| GET | `/api/ai/subscriptions` | Subscription list with AI risk score |
-| GET | `/api/ai/anomalies` | Spending anomalies vs peer averages |
-| GET | `/api/ai/forecast` | Month-end projection + daily bar data |
-| GET | `/api/ai/vendor-analysis` | Per-vendor breakdown + AI observation |
-| GET | `/api/ai/budget-coach` | Personalised coach message |
-| POST | `/api/ai/chat` | Free-form copilot chat (markdown response) |
-| POST | `/api/ai/parse-text` | Extract receipt fields from natural language |
-| POST | `/api/ai/check-duplicate` | Detect duplicate within 7-day window |
-| POST | `/api/ai/tag-receipt` | Suggest category + tags for a receipt |
-
-### Notifications — `/api/notifications`
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/notifications` | Budget alerts + anomalies + upcoming charges |
-| POST | `/api/notifications/mark-read` | Mark notification(s) as read |
-
-### Export — `/api/export`
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/export/excel` | Download all receipts as `.xlsx` |
-| GET | `/api/export/report` | Download 3-sheet AI report (Summary, Receipts, Insights) |
-
-### Profile — `/api/profile`
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/profile` | Get profile details |
-| PUT | `/api/profile` | Update name, bio, avatar URL |
-| PUT | `/api/profile/password` | Change password |
-| POST | `/api/profile/avatar` | Upload avatar image |
-
-### Admin — `/api/admin` _(role: Admin only)_
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/admin/users` | List all users with stats |
-| PUT | `/api/admin/users/{id}/role` | Assign / revoke Admin role |
-| GET | `/api/admin/stats` | Workspace-wide aggregates |
-
----
+```text
+HTTP Request
+-> Controller (ExpenseTracker.Api)
+-> Service / Domain Logic (ExpenseTracker.Services)
+-> Repository / DbContext (ExpenseTracker.Services)
+-> SQL Server
+```
 
 ## Configuration
 
-Create `appsettings.Development.json` (never commit to source control):
+Keep real secrets in configuration files or user secrets, not in source code constants.
+
+### Committed config
+
+- `appsettings.json`
+  - safe defaults only
+  - no real secrets
+
+### Local-only config
+
+- `appsettings.Development.json`
+  - connection string
+  - JWT secret
+  - SMTP credentials
+  - OpenAI or Groq-compatible API key
+
+### Active configuration sections
 
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost,1433;Database=ExpenseTrackerDb;User Id=sa;Password=YOUR_SA_PASSWORD;TrustServerCertificate=True;"
+    "DefaultConnection": "..."
   },
-  "Jwt": {
-    "Secret": "a-long-random-secret-at-least-32-characters",
-    "Issuer": "ExpenseTrackerApi",
-    "Audience": "ExpenseTrackerClient",
-    "ExpiryMinutes": 1440
+  "JwtSettings": {
+    "Secret": "...",
+    "Issuer": "ExpenseTracker",
+    "Audience": "ExpenseTrackerUsers",
+    "ExpiryMinutes": 120
+  },
+  "Email": {
+    "SmtpHost": "...",
+    "SmtpPort": 587,
+    "Username": "...",
+    "Password": "...",
+    "FromAddress": "...",
+    "FromName": "AI Expense Tracker",
+    "EnableSsl": true
   },
   "OpenAI": {
-    "ApiKey": "gsk_YOUR_GROQ_API_KEY",
+    "ApiKey": "...",
     "Model": "openai/gpt-oss-20b",
     "ResponsesEndpoint": "https://api.groq.com/openai/v1/responses"
   },
-  "AzureBlob": {
-    "ConnectionString": "DefaultEndpointsProtocol=https;AccountName=...;",
-    "ContainerName": "receipts"
+  "AzureAI": {
+    "Endpoint": "...",
+    "Key": "..."
   },
-  "Email": {
-    "SmtpHost": "smtp.gmail.com",
-    "SmtpPort": 587,
-    "SenderEmail": "you@gmail.com",
-    "SenderPassword": "app-password"
+  "Storage": {
+    "RootPath": "storage",
+    "AvatarsFolder": "avatars",
+    "ReceiptsFolder": "receipts"
   }
 }
 ```
 
-> **Tip:** Use .NET User Secrets during local development:
-> ```bash
-> dotnet user-secrets set "Jwt:Secret" "your-secret"
-> dotnet user-secrets set "OpenAI:ApiKey" "gsk_..."
-> ```
+### Security rule
 
----
+- No real secrets should be stored in `ApplicationText.cs` or any `.cs` file.
+- `ApplicationText.cs` should only contain labels, route names, section names, safe defaults, and non-sensitive messages.
 
-## How to Run
+## Main API Areas
 
-### Prerequisites
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8)
-- SQL Server 2019+ (Docker or local install)
-- (Optional) Azure Storage account for receipt file uploads
+- `AuthController` for registration, login, OTP, password reset, and admin bootstrap
+- `ReceiptsController` for upload, quick add, paging, bulk operations, and file access
+- `BudgetsController` and budget status endpoints for budgets, advisor data, and health snapshots
+- `AIController` for receipt parsing, insights, summaries, anomalies, forecasts, vendor analysis, and duplicate checks
+- `CategoriesController` for categories and vendor rules
+- `NotificationsController` for notification feeds and digest delivery status
+- `ProfileController` for profile and avatar management
+- `AdminController` for overview, users, role updates, and user deletion
+- `ExportController` for Excel and AI report export
 
-### Steps
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/your-org/expense-tracker.git
-cd expense-tracker/ExpenseTracker.Api
-
-# 2. Create appsettings.Development.json (see Configuration above)
-
-# 3. Apply EF Core migrations to create the database
-dotnet ef database update
-
-# 4. Run the API (default: https://localhost:5001)
-dotnet run
-
-# 5. Open Swagger UI
-# https://localhost:5001/swagger
-```
-
-### Docker (optional)
-
-A `Dockerfile` is included at the repo root. Build and run:
+## Run Locally
 
 ```bash
-docker build -t expense-tracker-api .
-docker run -p 5001:5001 \
-  -e "ConnectionStrings__DefaultConnection=Server=host.docker.internal,1433;..." \
-  -e "Jwt__Secret=your-secret" \
-  -e "OpenAI__ApiKey=gsk_..." \
-  expense-tracker-api
+dotnet restore
+dotnet build ExpenseTracker.Api.csproj
+dotnet run --project ExpenseTracker.Api.csproj
 ```
 
----
+## Tests
 
-## Database
+```bash
+dotnet test Tests/ExpenseTracker.Api.Tests/ExpenseTracker.Api.Tests.csproj
+```
 
-Tables created by EF Core migrations:
+## Current Status
 
-| Table | Description |
-|---|---|
-| `Users` | Accounts and OTP verification state |
-| `Receipts` | Primary expense records (vendor, amount, date, category, file URL) |
-| `Categories` | User-defined spend categories |
-| `VendorRules` | Regex/substring patterns that auto-assign a category |
-| `Budgets` | Monthly category spending limits |
-| `Profiles` | Extended user profile info and avatar |
+The solution currently builds and tests successfully with the split architecture:
 
-Run `dotnet ef migrations list` to see all applied migrations.
-
----
-
-## AI Integration
-
-All AI calls go through `AIService` → `TryGenerateModelReplyAsync()` which POSTs to the Groq `/v1/responses` endpoint.
-
-**Capabilities:**
-
-| Feature | Method | What it does |
-|---|---|---|
-| Financial Insights | `GetInsightsAsync` | Narrative overview + top risk areas |
-| Budget Advice | `GetBudgetAdviceAsync` | Per-budget pace + projected overspend |
-| Subscription Detection | `GetSubscriptionsAsync` | Groups recurring receipts, adds AI risk score |
-| Anomaly Detection | `GetSpendingAnomaliesAsync` | Flags categories with unusual spend |
-| Spending Forecast | `GetSpendingForecastAsync` | Month-end projection + daily bar chart data |
-| Vendor Analysis | `GetVendorAnalysisAsync` | Per-vendor totals + MoM trend + narrative |
-| Notifications | `GetNotificationsAsync` | Combines budget alerts + anomalies + subscriptions |
-| NL Expense Parse | `ParseTextExpenseAsync` | Extracts vendor/amount/date/category from free text |
-| Duplicate Check | `CheckDuplicateReceiptAsync` | Fuzzy match within 7-day rolling window |
-| Receipt Tagging | `TagReceiptAsync` | Suggests category + tags for uploaded receipt |
-| Budget Coach | `GetBudgetCoachMessageAsync` | Personalised coaching message |
-| Chat | `GetChatResponseAsync` | Multi-turn copilot over user's real data |
-
-If the model returns invalid JSON or times out, each method returns a safe default DTO so the rest of the app continues working normally.
+- `ExpenseTracker.Api`
+- `ExpenseTracker.Services`
+- `ExpenseTracker.Shared`

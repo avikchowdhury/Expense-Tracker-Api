@@ -10,15 +10,26 @@
   <ItemGroup>
     <Compile Remove="obj\**\*.cs" />
     <Compile Remove="bin\**\*.cs" />
+    <Compile Remove="Configuration\JwtSettings.cs" />
+    <Compile Remove="Data\**\*.cs" />
+    <Compile Remove="Dtos\**\*.cs" />
+    <Compile Remove="Extensions\ParsingHelpers.cs" />
+    <Compile Remove="Models\**\*.cs" />
+    <Compile Remove="Modules\**\*.cs" />
+    <Compile Remove="Security\AppRoles.cs" />
+    <Compile Remove="Services\**\*.cs" />
     <Compile Remove="Tests\**\*.cs" />
     <Content Remove="obj\**" />
     <Content Remove="bin\**" />
+    <Content Remove="Modules\**" />
     <Content Remove="Tests\**" />
     <EmbeddedResource Remove="obj\**" />
     <EmbeddedResource Remove="bin\**" />
+    <EmbeddedResource Remove="Modules\**" />
     <EmbeddedResource Remove="Tests\**" />
     <None Remove="obj\**" />
     <None Remove="bin\**" />
+    <None Remove="Modules\**" />
     <None Remove="Tests\**" />
   </ItemGroup>
 
@@ -42,6 +53,11 @@
 
   <ItemGroup>
     <Folder Include="wwwroot\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="Modules\Service\ExpenseTracker.Services.csproj" />
+    <ProjectReference Include="Modules\Shared\ExpenseTracker.Shared.csproj" />
   </ItemGroup>
 
 </Project>

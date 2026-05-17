@@ -1,5 +1,6 @@
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Security;
+using ExpenseTracker.Shared.Constants;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
 
@@ -41,7 +42,7 @@ namespace ExpenseTracker.Api.Middleware
                 await WriteErrorAsync(
                     context,
                     StatusCodes.Status401Unauthorized,
-                    "Authentication is required for this resource.");
+                    ApplicationText.Security.AuthenticationRequired);
                 return;
             }
 
@@ -51,7 +52,7 @@ namespace ExpenseTracker.Api.Middleware
                 await WriteErrorAsync(
                     context,
                     StatusCodes.Status401Unauthorized,
-                    "Authenticated user context is not available.");
+                    ApplicationText.Security.AuthenticatedUserContextUnavailable);
                 return;
             }
 
@@ -65,7 +66,7 @@ namespace ExpenseTracker.Api.Middleware
                     await WriteErrorAsync(
                         context,
                         StatusCodes.Status403Forbidden,
-                        "You do not have permission to access this resource.");
+                        ApplicationText.Security.AccessDenied);
                     return;
                 }
             }

@@ -1,10 +1,12 @@
+using ExpenseTracker.Shared.Constants;
+
 namespace ExpenseTracker.Api.Services
 {
     public sealed class FileStorageOptions
     {
-        public string RootPath { get; set; } = "storage";
-        public string AvatarsFolder { get; set; } = "avatars";
-        public string ReceiptsFolder { get; set; } = "receipts";
+        public string RootPath { get; set; } = ApplicationText.Storage.RootFolder;
+        public string AvatarsFolder { get; set; } = ApplicationText.Storage.AvatarsFolder;
+        public string ReceiptsFolder { get; set; } = ApplicationText.Storage.ReceiptsFolder;
     }
 
     public sealed class FileStoragePaths

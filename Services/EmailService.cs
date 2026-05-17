@@ -1,3 +1,4 @@
+using ExpenseTracker.Shared.Constants;
 using System.Net;
 using System.Net.Mail;
 
@@ -10,7 +11,7 @@ namespace ExpenseTracker.Api.Services
         public string Username { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
         public string FromAddress { get; set; } = string.Empty;
-        public string FromName { get; set; } = "AI Expense Tracker";
+        public string FromName { get; set; } = ApplicationText.Email.FromName;
         public bool EnableSsl { get; set; } = true;
     }
 
@@ -33,8 +34,8 @@ namespace ExpenseTracker.Api.Services
         {
             return SendEmailAsync(
                 toEmail,
-                "Your AI Expense Tracker OTP",
-                $"Your OTP is {otp}. It will expire in 10 minutes.",
+                ApplicationText.Email.OtpSubject,
+                string.Format(ApplicationText.Email.OtpBodyTemplate, otp),
                 cancellationToken: cancellationToken);
         }
 
@@ -42,8 +43,8 @@ namespace ExpenseTracker.Api.Services
         {
             return SendEmailAsync(
                 toEmail,
-                "Password Reset - AI Expense Tracker",
-                $"Your password reset code is: {token}\n\nIt will expire in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.",
+                ApplicationText.Email.PasswordResetSubject,
+                string.Format(ApplicationText.Email.PasswordResetBodyTemplate, token),
                 cancellationToken: cancellationToken);
         }
 
@@ -83,7 +84,7 @@ namespace ExpenseTracker.Api.Services
 
         private EmailSettings GetSettings()
         {
-            return _configuration.GetSection("Email").Get<EmailSettings>() ?? new EmailSettings();
+            return _configuration.GetSection(ApplicationText.Configuration.EmailSection).Get<EmailSettings>() ?? new EmailSettings();
         }
 
         private static bool HasRequiredSettings(EmailSettings settings)

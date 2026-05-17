@@ -2,6 +2,7 @@ using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Extensions;
 using ExpenseTracker.Api.Models;
+using ExpenseTracker.Shared.Constants;
 using Microsoft.EntityFrameworkCore;
 
 namespace ExpenseTracker.Api.Services
@@ -24,9 +25,9 @@ namespace ExpenseTracker.Api.Services
                 UserId = userId,
                 FileName = file.FileName,
                 UploadedAt = DateTime.UtcNow,
-                Category = "Uncategorized",
+                Category = ApplicationText.Defaults.UncategorizedCategory,
                 TotalAmount = 0M,
-                ParsedContentJson = "{}"
+                ParsedContentJson = ApplicationText.Storage.EmptyJsonObject
             };
 
             Directory.CreateDirectory(_storagePaths.ReceiptsPath);
@@ -63,12 +64,12 @@ namespace ExpenseTracker.Api.Services
             var receipt = new Receipt
             {
                 UserId = userId,
-                FileName = $"quick-add-{Guid.NewGuid():N}.txt",
+                FileName = $"{ApplicationText.Storage.QuickAddFilePrefix}-{Guid.NewGuid():N}.txt",
                 UploadedAt = date.Kind == DateTimeKind.Utc ? date : DateTime.SpecifyKind(date, DateTimeKind.Utc),
                 Vendor = vendor,
                 TotalAmount = amount,
-                Category = string.IsNullOrWhiteSpace(category) ? "Uncategorized" : category.Trim(),
-                ParsedContentJson = "{\"source\":\"quick-add\"}"
+                Category = string.IsNullOrWhiteSpace(category) ? ApplicationText.Defaults.UncategorizedCategory : category.Trim(),
+                ParsedContentJson = ApplicationText.Storage.QuickAddSourceJson
             };
 
             var vendorRules = await LoadActiveVendorRulesAsync(userId, cancellationToken);
@@ -208,11 +209,11 @@ namespace ExpenseTracker.Api.Services
         public async Task<BulkReceiptOperationResultDto> BulkCategorizeAsync(int userId, IReadOnlyCollection<int> receiptIds, string category, CancellationToken cancellationToken = default)
         {
             var normalizedIds = NormalizeReceiptIds(receiptIds);
-            var normalizedCategory = string.IsNullOrWhiteSpace(category) ? "Uncategorized" : category.Trim();
+            var normalizedCategory = string.IsNullOrWhiteSpace(category) ? ApplicationText.Defaults.UncategorizedCategory : category.Trim();
 
             if (normalizedIds.Count == 0)
             {
-                return BuildBulkResult(0, 0, "Select at least one receipt.");
+                return BuildBulkResult(0, 0, ApplicationText.Receipts.SelectAtLeastOneReceipt);
             }
 
             var receipts = await _unitOfWork.Receipts.Query()
@@ -231,7 +232,13 @@ namespace ExpenseTracker.Api.Services
                 await SyncExpenseFromReceiptAsync(receipt, cancellationToken);
             }
 
-            return BuildBulkResult(normalizedIds.Count, receipts.Count, $"Updated {receipts.Count} receipt categor{(receipts.Count == 1 ? "y" : "ies")}.");
+            return BuildBulkResult(
+                normalizedIds.Count,
+                receipts.Count,
+                string.Format(
+                    ApplicationText.Receipts.UpdatedCategoriesTemplate,
+                    receipts.Count,
+                    receipts.Count == 1 ? "y" : "ies"));
         }
 
         public async Task<BulkReceiptOperationResultDto> BulkDeleteAsync(int userId, IReadOnlyCollection<int> receiptIds, CancellationToken cancellationToken = default)
@@ -239,7 +246,7 @@ namespace ExpenseTracker.Api.Services
             var normalizedIds = NormalizeReceiptIds(receiptIds);
             if (normalizedIds.Count == 0)
             {
-                return BuildBulkResult(0, 0, "Select at least one receipt.");
+                return BuildBulkResult(0, 0, ApplicationText.Receipts.SelectAtLeastOneReceipt);
             }
 
             var receipts = await _unitOfWork.Receipts.Query()
@@ -261,7 +268,13 @@ namespace ExpenseTracker.Api.Services
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
-            return BuildBulkResult(normalizedIds.Count, receipts.Count, $"Deleted {receipts.Count} receipt{(receipts.Count == 1 ? string.Empty : "s")}.");
+            return BuildBulkResult(
+                normalizedIds.Count,
+                receipts.Count,
+                string.Format(
+                    ApplicationText.Receipts.DeletedReceiptsTemplate,
+                    receipts.Count,
+                    receipts.Count == 1 ? string.Empty : "s"));
         }
 
         public async Task<BulkReceiptOperationResultDto> BulkApplyVendorRulesAsync(int userId, IReadOnlyCollection<int> receiptIds, CancellationToken cancellationToken = default)
@@ -269,7 +282,7 @@ namespace ExpenseTracker.Api.Services
             var normalizedIds = NormalizeReceiptIds(receiptIds);
             if (normalizedIds.Count == 0)
             {
-                return BuildBulkResult(0, 0, "Select at least one receipt.");
+                return BuildBulkResult(0, 0, ApplicationText.Receipts.SelectAtLeastOneReceipt);
             }
 
             var receipts = await _unitOfWork.Receipts.Query()
@@ -298,7 +311,13 @@ namespace ExpenseTracker.Api.Services
                 }
             }
 
-            return BuildBulkResult(normalizedIds.Count, updatedReceipts.Count, $"Applied vendor rules to {updatedReceipts.Count} receipt{(updatedReceipts.Count == 1 ? string.Empty : "s")}.");
+            return BuildBulkResult(
+                normalizedIds.Count,
+                updatedReceipts.Count,
+                string.Format(
+                    ApplicationText.Receipts.AppliedVendorRulesTemplate,
+                    updatedReceipts.Count,
+                    updatedReceipts.Count == 1 ? string.Empty : "s"));
         }
 
         public async Task<BulkReceiptOperationResultDto> BulkMarkDuplicatesAsync(int userId, IReadOnlyCollection<int> receiptIds, bool isMarkedDuplicate, CancellationToken cancellationToken = default)
@@ -306,7 +325,7 @@ namespace ExpenseTracker.Api.Services
             var normalizedIds = NormalizeReceiptIds(receiptIds);
             if (normalizedIds.Count == 0)
             {
-                return BuildBulkResult(0, 0, "Select at least one receipt.");
+                return BuildBulkResult(0, 0, ApplicationText.Receipts.SelectAtLeastOneReceipt);
             }
 
             var receipts = await _unitOfWork.Receipts.Query()
@@ -324,7 +343,14 @@ namespace ExpenseTracker.Api.Services
             }
 
             var action = isMarkedDuplicate ? "Marked" : "Cleared";
-            return BuildBulkResult(normalizedIds.Count, receipts.Count, $"{action} {receipts.Count} duplicate flag{(receipts.Count == 1 ? string.Empty : "s")}.");
+            return BuildBulkResult(
+                normalizedIds.Count,
+                receipts.Count,
+                string.Format(
+                    ApplicationText.Receipts.DuplicateFlagTemplate,
+                    action,
+                    receipts.Count,
+                    receipts.Count == 1 ? string.Empty : "s"));
         }
 
         private Task<string> ParseReceiptAsync(string filePath, CancellationToken cancellationToken)
@@ -365,7 +391,7 @@ namespace ExpenseTracker.Api.Services
             expense.Amount = receipt.TotalAmount;
             expense.CategoryId = category?.Id;
             expense.Description = !string.IsNullOrWhiteSpace(receipt.Vendor) ? receipt.Vendor : receipt.FileName;
-            expense.Currency = "USD";
+            expense.Currency = ApplicationText.Defaults.UsdCurrency;
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
@@ -400,7 +426,7 @@ namespace ExpenseTracker.Api.Services
 
         private async Task<Category?> ResolveCategoryAsync(int userId, string? categoryName, CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(categoryName) || categoryName.Equals("Uncategorized", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(categoryName) || categoryName.Equals(ApplicationText.Defaults.UncategorizedCategory, StringComparison.OrdinalIgnoreCase))
             {
                 return null;
             }

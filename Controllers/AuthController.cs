@@ -3,6 +3,7 @@ using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
 using ExpenseTracker.Api.Security;
 using ExpenseTracker.Api.Services;
+using ExpenseTracker.Shared.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -47,12 +48,12 @@ namespace ExpenseTracker.Api.Controllers
             var email = NormalizeEmail(request.Email);
             if (!IsValidEmail(email))
             {
-                return BadRequest(new { message = "Enter a valid email address." });
+                return BadRequest(new { message = ApplicationText.Auth.EnterValidEmailAddress });
             }
 
             if (await _unitOfWork.Users.Query().AnyAsync(u => u.Email == email))
             {
-                return BadRequest(new { message = "Email already in use" });
+                return BadRequest(new { message = ApplicationText.Auth.EmailAlreadyInUse });
             }
 
             var user = new User
@@ -77,7 +78,7 @@ namespace ExpenseTracker.Api.Controllers
             var user = await _unitOfWork.Users.Query().FirstOrDefaultAsync(x => x.Email == email);
             if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
             {
-                return Unauthorized(new { message = "Invalid credentials" });
+                return Unauthorized(new { message = ApplicationText.Auth.InvalidCredentials });
             }
 
             var primaryRole = await _userRoleService.GetPrimaryRoleAsync(user);
@@ -91,19 +92,19 @@ namespace ExpenseTracker.Api.Controllers
         {
             var email = NormalizeEmail(request.Email);
             if (!IsValidEmail(email))
-                return BadRequest(new { message = "Enter a valid email address." });
+                return BadRequest(new { message = ApplicationText.Auth.EnterValidEmailAddress });
             if (await _unitOfWork.Users.Query().AnyAsync(u => u.Email == email))
-                return BadRequest(new { message = "Email already in use" });
-            var otp = new Random().Next(100000, 999999).ToString();
-            _cache.Set($"otp_{email}", otp, TimeSpan.FromMinutes(10));
+                return BadRequest(new { message = ApplicationText.Auth.EmailAlreadyInUse });
+            var otp = new Random().Next(ApplicationText.Auth.OtpCodeMinValue, ApplicationText.Auth.OtpCodeMaxValueExclusive).ToString();
+            _cache.Set($"{ApplicationText.CacheKeys.OtpPrefix}{email}", otp, TimeSpan.FromMinutes(ApplicationText.Auth.OtpExpiryMinutes));
 
             var emailed = await _emailService.SendOtpEmailAsync(email, otp, cancellationToken);
             if (emailed)
             {
                 return Ok(new SendOtpResponseDto
                 {
-                    Message = "OTP sent to your email.",
-                    DeliveryMode = "email"
+                    Message = ApplicationText.Auth.OtpSentToEmail,
+                    DeliveryMode = ApplicationText.DeliveryModes.Email
                 });
             }
 
@@ -112,9 +113,9 @@ namespace ExpenseTracker.Api.Controllers
             return Ok(new SendOtpResponseDto
             {
                 Message = _environment.IsDevelopment()
-                    ? "SMTP is not configured, so the development OTP is returned below."
-                    : "OTP generated, but email delivery is not configured on the server.",
-                DeliveryMode = _environment.IsDevelopment() ? "development" : "email",
+                    ? ApplicationText.Auth.SmtpNotConfiguredOtpDevelopment
+                    : ApplicationText.Auth.OtpGeneratedWithoutEmail,
+                DeliveryMode = _environment.IsDevelopment() ? ApplicationText.DeliveryModes.Development : ApplicationText.DeliveryModes.Email,
                 DevelopmentOtp = _environment.IsDevelopment() ? otp : null
             });
         }
@@ -124,13 +125,13 @@ namespace ExpenseTracker.Api.Controllers
         {
             var email = NormalizeEmail(request.Email);
             if (!IsValidEmail(email))
-                return BadRequest(new { message = "Enter a valid email address." });
+                return BadRequest(new { message = ApplicationText.Auth.EnterValidEmailAddress });
             if (await _unitOfWork.Users.Query().AnyAsync(u => u.Email == email))
-                return BadRequest(new { message = "Email already in use" });
+                return BadRequest(new { message = ApplicationText.Auth.EmailAlreadyInUse });
             if (string.IsNullOrWhiteSpace(request.Password))
-                return BadRequest(new { message = "Password is required." });
-            if (!_cache.TryGetValue($"otp_{email}", out string? cachedOtp) || cachedOtp != request.Otp)
-                return BadRequest(new { message = "Invalid or expired OTP." });
+                return BadRequest(new { message = ApplicationText.Auth.PasswordRequired });
+            if (!_cache.TryGetValue($"{ApplicationText.CacheKeys.OtpPrefix}{email}", out string? cachedOtp) || cachedOtp != request.Otp)
+                return BadRequest(new { message = ApplicationText.Auth.InvalidOrExpiredOtp });
             var user = new User
             {
                 Email = email,
@@ -140,7 +141,7 @@ namespace ExpenseTracker.Api.Controllers
             await _unitOfWork.SaveChangesAsync();
             await _userRoleService.SetRoleAsync(user, AppRoles.User);
             await _unitOfWork.SaveChangesAsync();
-            _cache.Remove($"otp_{email}");
+            _cache.Remove($"{ApplicationText.CacheKeys.OtpPrefix}{email}");
             var tokenResponse = _jwtService.GenerateRefreshTokenResponse(user.Id, user.Email, user.Role);
             return Ok(tokenResponse);
         }
@@ -150,15 +151,15 @@ namespace ExpenseTracker.Api.Controllers
         {
             var email = NormalizeEmail(request.Email);
             if (!IsValidEmail(email))
-                return BadRequest(new { message = "Enter a valid email address." });
+                return BadRequest(new { message = ApplicationText.Auth.EnterValidEmailAddress });
 
             var user = await _unitOfWork.Users.Query().FirstOrDefaultAsync(u => u.Email == email);
             // Always return OK to avoid user enumeration
             if (user == null)
-                return Ok(new { message = "If that email exists, a reset code has been sent." });
+                return Ok(new { message = ApplicationText.Auth.IfEmailExistsResetCodeSent });
 
-            var token = new Random().Next(100000, 999999).ToString();
-            _cache.Set($"reset_{email}", token, TimeSpan.FromMinutes(15));
+            var token = new Random().Next(ApplicationText.Auth.OtpCodeMinValue, ApplicationText.Auth.OtpCodeMaxValueExclusive).ToString();
+            _cache.Set($"{ApplicationText.CacheKeys.ResetPrefix}{email}", token, TimeSpan.FromMinutes(ApplicationText.Auth.ResetCodeExpiryMinutes));
 
             var emailed = await _emailService.SendPasswordResetEmailAsync(email, token, cancellationToken);
             if (!emailed && _environment.IsDevelopment())
@@ -166,12 +167,12 @@ namespace ExpenseTracker.Api.Controllers
                 System.Diagnostics.Debug.WriteLine($"Password reset OTP for {email}: {token}");
                 return Ok(new
                 {
-                    message = "SMTP not configured. Development reset code returned.",
+                    message = ApplicationText.Auth.SmtpNotConfiguredResetDevelopment,
                     developmentToken = token
                 });
             }
 
-            return Ok(new { message = "If that email exists, a reset code has been sent." });
+            return Ok(new { message = ApplicationText.Auth.IfEmailExistsResetCodeSent });
         }
 
         [HttpPost("reset-password")]
@@ -179,23 +180,23 @@ namespace ExpenseTracker.Api.Controllers
         {
             var email = NormalizeEmail(request.Email);
             if (!IsValidEmail(email))
-                return BadRequest(new { message = "Enter a valid email address." });
+                return BadRequest(new { message = ApplicationText.Auth.EnterValidEmailAddress });
 
-            if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
-                return BadRequest(new { message = "Password must be at least 6 characters." });
+            if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < ApplicationText.Auth.MinimumPasswordLength)
+                return BadRequest(new { message = ApplicationText.Auth.PasswordMinimumLength });
 
-            if (!_cache.TryGetValue($"reset_{email}", out string? cachedToken) || cachedToken != request.Token)
-                return BadRequest(new { message = "Invalid or expired reset code." });
+            if (!_cache.TryGetValue($"{ApplicationText.CacheKeys.ResetPrefix}{email}", out string? cachedToken) || cachedToken != request.Token)
+                return BadRequest(new { message = ApplicationText.Auth.InvalidOrExpiredResetCode });
 
             var user = await _unitOfWork.Users.Query().FirstOrDefaultAsync(u => u.Email == email);
             if (user == null)
-                return BadRequest(new { message = "Invalid or expired reset code." });
+                return BadRequest(new { message = ApplicationText.Auth.InvalidOrExpiredResetCode });
 
             user.PasswordHash = HashPassword(request.NewPassword);
             await _unitOfWork.SaveChangesAsync();
-            _cache.Remove($"reset_{email}");
+            _cache.Remove($"{ApplicationText.CacheKeys.ResetPrefix}{email}");
 
-            return Ok(new { message = "Password updated successfully. You can now log in." });
+            return Ok(new { message = ApplicationText.Auth.PasswordUpdatedSuccessfully });
         }
 
         [AppAuthorize]
@@ -205,7 +206,7 @@ namespace ExpenseTracker.Api.Controllers
             var user = await _unitOfWork.Users.FindAsync(CurrentUserId);
             if (user is null)
             {
-                return NotFound(new { message = "User not found." });
+                return NotFound(new { message = ApplicationText.Auth.UserNotFound });
             }
 
             var primaryRole = await _userRoleService.GetPrimaryRoleAsync(user);
@@ -217,7 +218,7 @@ namespace ExpenseTracker.Api.Controllers
             var adminExists = await _userRoleService.AnyUserInRoleAsync(AppRoles.Admin);
             if (adminExists)
             {
-                return BadRequest(new { message = "An admin account already exists. Ask an admin to grant access." });
+                return BadRequest(new { message = ApplicationText.Auth.AdminAlreadyExists });
             }
 
             await _userRoleService.SetRoleAsync(user, AppRoles.Admin);

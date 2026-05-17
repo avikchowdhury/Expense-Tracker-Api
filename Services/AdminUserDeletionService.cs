@@ -2,6 +2,7 @@ using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
 using ExpenseTracker.Api.Security;
+using ExpenseTracker.Shared.Constants;
 
 namespace ExpenseTracker.Api.Services
 {
@@ -39,12 +40,12 @@ namespace ExpenseTracker.Api.Services
 
             if (normalizedUserIds.Length == 0)
             {
-                throw new ArgumentException("Select at least one user to delete.");
+                throw new ArgumentException(ApplicationText.AdminUsers.SelectAtLeastOneUser);
             }
 
             if (normalizedUserIds.Contains(actingUserId))
             {
-                throw new ArgumentException("Use another admin account to delete your own account.");
+                throw new ArgumentException(ApplicationText.AdminUsers.CannotDeleteOwnAccount);
             }
 
             var users = await _adminUserDeletionRepository.GetUsersWithRolesAsync(
@@ -57,7 +58,7 @@ namespace ExpenseTracker.Api.Services
                 {
                     RequestedCount = normalizedUserIds.Length,
                     DeletedCount = 0,
-                    Message = "No matching users were found."
+                    Message = ApplicationText.AdminUsers.NoMatchingUsers
                 };
             }
 
@@ -68,7 +69,7 @@ namespace ExpenseTracker.Api.Services
                 var adminCount = await _userRoleService.CountUsersInRoleAsync(AppRoles.Admin, cancellationToken);
                 if (adminCount - deletedAdminCount < 1)
                 {
-                    throw new ArgumentException("At least one admin account must remain in the workspace.");
+                    throw new ArgumentException(ApplicationText.AdminUsers.AtLeastOneAdminMustRemain);
                 }
             }
 

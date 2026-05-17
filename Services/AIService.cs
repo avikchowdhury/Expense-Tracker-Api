@@ -1,5 +1,6 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
+using ExpenseTracker.Shared.Constants;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using System;
@@ -50,8 +51,8 @@ namespace ExpenseTracker.Api.Services
             await file.CopyToAsync(ms);
             var fileBytes = ms.ToArray();
 
-            var aiEndpoint = _configuration["AzureAI:Endpoint"];
-            var aiKey = _configuration["AzureAI:Key"];
+            var aiEndpoint = _configuration[ApplicationText.Configuration.AzureAiEndpointKey];
+            var aiKey = _configuration[ApplicationText.Configuration.AzureAiKeyKey];
             if (string.IsNullOrWhiteSpace(aiEndpoint) || !Uri.IsWellFormedUriString(aiEndpoint, UriKind.Absolute) || string.IsNullOrWhiteSpace(aiKey))
             {
                 return BuildFallbackReceiptParse(file.FileName, fileBytes);
@@ -466,9 +467,9 @@ namespace ExpenseTracker.Api.Services
             AiInsightSnapshotDto snapshot,
             string fallbackReply)
         {
-            var apiKey = _configuration["OpenAI:ApiKey"];
-            var model = _configuration["OpenAI:Model"] ?? "gpt-5-mini";
-            var endpoint = _configuration["OpenAI:ResponsesEndpoint"];
+            var apiKey = _configuration[ApplicationText.Configuration.OpenAiApiKeyKey];
+            var model = _configuration[ApplicationText.Configuration.OpenAiModelKey] ?? ApplicationText.Ai.DefaultResponsesModel;
+            var endpoint = _configuration[ApplicationText.Configuration.OpenAiResponsesEndpointKey];
 
             if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(endpoint))
             {
@@ -1536,9 +1537,9 @@ namespace ExpenseTracker.Api.Services
         {
             var fallback = new ParseTextResultDto
             {
-                Vendor = "Unknown",
+                Vendor = ApplicationText.Defaults.UnknownVendor,
                 Amount = 0,
-                Category = "General",
+                Category = ApplicationText.Defaults.GeneralCategory,
                 Date = DateTime.UtcNow.ToString("yyyy-MM-dd"),
                 Parsed = false,
                 RawText = text
@@ -1547,9 +1548,9 @@ namespace ExpenseTracker.Api.Services
             if (string.IsNullOrWhiteSpace(text))
                 return fallback;
 
-            var apiKey = _configuration["OpenAI:ApiKey"];
-            var model = _configuration["OpenAI:Model"] ?? "gpt-5-mini";
-            var endpoint = _configuration["OpenAI:ResponsesEndpoint"];
+            var apiKey = _configuration[ApplicationText.Configuration.OpenAiApiKeyKey];
+            var model = _configuration[ApplicationText.Configuration.OpenAiModelKey] ?? ApplicationText.Ai.DefaultResponsesModel;
+            var endpoint = _configuration[ApplicationText.Configuration.OpenAiResponsesEndpointKey];
 
             if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(endpoint))
                 return TryParseTextLocally(text);
@@ -1564,88 +1565,8 @@ namespace ExpenseTracker.Api.Services
                 {
                     model,
                     reasoning = new { effort = "low" },
-                    instructions = @"You are a smart global expense receipt parser. Extract structured expense data from informal, conversational, or typoed text in ANY language or country.
-
-                    CATEGORIES — pick the single best match using common sense and context:
-
-                    Daily spending:
-                    - Food & Dining: restaurants, cafes, dhabas, bars, food courts, hotel meals, takeaway, dine-in
-                    - Snacks & Beverages: chocolates, chips, candy, street food (egg roll, momos, vada pav, puchka, hot dog), juice, chai, coffee (takeaway), ice cream, biscuits, namkeen
-                    - Groceries: vegetables, fruits, dairy, rice, dal, atta, supermarkets (Walmart, Tesco, Big Bazaar, DMart, Carrefour, Lidl), kirana store, corner shop
-                    - Food Delivery: Swiggy, Zomato, Uber Eats, DoorDash, Deliveroo, Grab Food, FoodPanda, Talabat, online food order
-
-                    Getting around:
-                    - Transport: taxi, auto, rickshaw, Ola, Uber, Lyft, Grab, Rapido, bus, metro, train, ferry, toll, parking, petrol, diesel, fuel, EV charging, bike rental
-                    - Travel & Trips: flights, hotels (overnight stay), Airbnb, hostels, vacation, tours, sightseeing, travel insurance, visa fees, holiday packages
-
-                    Home & living:
-                    - Rent & Housing: house rent, room rent, PG, apartment, office rent, hostel rent, society charges, maintenance, lease, security deposit
-                    - Utilities & Bills: electricity, water, gas (Indane, HP, British Gas), internet, mobile recharge, broadband, DTH, cable TV, WiFi, phone bill
-                    - Home & Furniture: furniture, appliances, home decor, home repair, plumber, electrician, carpenter, painting, AC service, pest control, IKEA
-                    - Pets: pet food, vet, grooming, pet supplies, pet medicine, boarding, kennel
-
-                    Health:
-                    - Healthcare & Medicine: pharmacy (Apollo, CVS, Boots, MedPlus, Walgreens), doctor, hospital, clinic, lab test, dental, optician, health checkup, ambulance, surgery, consultation
-                    - Fitness & Wellness: gym, yoga, salon, spa, haircut, parlour, massage, sports equipment, swimming pool, fitness classes, dietitian
-
-                    Shopping:
-                    - Shopping & Clothing: clothes, shoes, bags, accessories, gifts, Amazon, Flipkart, Myntra, ASOS, Zara, H&M, department stores, mall
-                    - Electronics & Gadgets: phone, laptop, headphones, charger, cables, Apple, Samsung, OnePlus, repair, screen replacement, tech accessories
-
-                    Education & Kids:
-                    - Education: tuition, school fees, college fees, books, stationery, coaching, Udemy, Coursera, exam fees, uniforms, online courses
-                    - Kids & Childcare: daycare, babysitter, toys, diapers, baby food, school supplies, kids clothes, playground, nursery fees
-
-                    Entertainment & Subscriptions:
-                    - Entertainment: movies (PVR, INOX, AMC), concerts, events, amusement parks, gaming, arcade, zoo, museum, sports match, bowling
-                    - Subscriptions: Netflix, Spotify, Disney+, Hotstar, YouTube Premium, Apple One, LinkedIn, iCloud, Google One, Xbox Game Pass, Amazon Prime, Audible
-
-                    Finance:
-                    - Insurance: life insurance, health insurance, vehicle insurance, LIC, home insurance, travel insurance, term plan, premium payment
-                    - Investments & Savings: SIP, mutual fund, stocks, FD, RD, PPF, NPS, crypto, trading (Zerodha, Groww, Robinhood, Coinbase, Binance)
-                    - EMI & Loan: home loan EMI, car loan, personal loan, credit card payment, BNPL, Afterpay, Klarna, Bajaj Finance
-                    - Taxes & Fees: income tax, property tax, GST, council tax, government fees, passport, driving license, RTO, registration fee
-
-                    Social & Giving:
-                    - Gifts & Occasions: birthday gifts, wedding gift, anniversary, festival spending (Diwali, Christmas, Eid, Holi), flowers, greeting cards, celebration
-                    - Charity & Donations: NGO donation, temple/church/mosque offering, crowdfunding, zakat, tithe, relief funds, charity
-
-                    Work:
-                    - Business & Work Expenses: office supplies, client meals, co-working space, work travel, courier, printing, SaaS tools (Slack, Notion, Figma, Zoom, AWS)
-                    - Personal Services: laundry, dry cleaning, tailor, cobbler, domestic help salary, maid, cook, watchman, driver salary, ironing
-
-                    - General: LAST RESORT ONLY — use when truly no other category fits at all
-
-                    VENDOR RULES — be smart, never literal:
-                    - Named brand/shop/app → use exactly that name
-                    - Rent/housing → 'Landlord' or person/company name if given
-                    - EMI/loan → bank name (e.g. 'HDFC Bank', 'SBI', 'Barclays')
-                    - Utility bill → provider name if mentioned, else 'Electricity Board', 'Water Board'
-                    - Domestic help/maid/driver salary → use their name if given, else 'Domestic help'
-                    - Person-to-person → use the person's name
-                    - Street food / unnamed local → 'Street stall' or 'Local shop'
-                    - Government payment → 'Government' or department name
-                    - Use 'Unknown' ONLY if there is truly zero vendor information
-
-                    AMOUNT:
-                    - Numeric value only, no currency symbols
-                    - Handle: '$20', '€15.50', '£8', '¥500', '₹200', 'Rs 50', '20 dollars', 'twenty euros', '15,99' (European comma)
-                    - Convert word numbers: 'twenty thousand' → 20000, 'five hundred' → 500
-                    - Multiple amounts → pick the final/total
-
-                    CURRENCY — ISO 4217 code:
-                    - $ → USD (or AUD/CAD/SGD if context is clear), € → EUR, £ → GBP, ¥ → JPY, ₹ → INR
-                    - 'rupees' → INR, 'dollars' → USD, 'euros' → EUR, 'pounds' → GBP, 'dirhams' → AED, 'ringgit' → MYR, 'baht' → THB, 'won' → KRW, 'yuan/RMB' → CNY
-                    - Default: 'USD' if truly unclear
-
-                    DATE:
-                    - Resolve relative dates ('yesterday', 'last Monday', '2 days ago') from today's date below
-                    - Handle absolute formats: '5th May', '03/15', 'March 15', '15-03'
-                    - Default: today if not mentioned
-
-                    Return ONLY valid JSON, no explanation, no markdown:
-                    {""vendor"": ""..."", ""amount"": 0.00, ""currency"": ""USD"", ""category"": ""..."", ""date"": ""yyyy-MM-dd"", ""parsed"": true, ""rawText"": ""...""}",
-                   input = $"Parse this expense: {text}\nToday is {DateTime.UtcNow:yyyy-MM-dd}"
+                    instructions = ApplicationText.Ai.ReceiptParserInstructions,
+                    input = $"Parse this expense: {text}\nToday is {DateTime.UtcNow:yyyy-MM-dd}"
                 };
 
                 request.Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
@@ -1670,9 +1591,9 @@ namespace ExpenseTracker.Api.Services
 
                 return new ParseTextResultDto
                 {
-                    Vendor = root.TryGetProperty("vendor", out var v) ? v.GetString() ?? "Unknown" : "Unknown",
+                    Vendor = root.TryGetProperty("vendor", out var v) ? v.GetString() ?? ApplicationText.Defaults.UnknownVendor : ApplicationText.Defaults.UnknownVendor,
                     Amount = root.TryGetProperty("amount", out var a) ? a.GetDecimal() : 0,
-                    Category = root.TryGetProperty("category", out var c) ? c.GetString() ?? "General" : "General",
+                    Category = root.TryGetProperty("category", out var c) ? c.GetString() ?? ApplicationText.Defaults.GeneralCategory : ApplicationText.Defaults.GeneralCategory,
                     Date = root.TryGetProperty("date", out var d) ? d.GetString() ?? DateTime.UtcNow.ToString("yyyy-MM-dd") : DateTime.UtcNow.ToString("yyyy-MM-dd"),
                     Parsed = true,
                     RawText = text
@@ -1692,9 +1613,9 @@ namespace ExpenseTracker.Api.Services
 
             return new ParseTextResultDto
             {
-                Vendor = "Unknown",
+                Vendor = ApplicationText.Defaults.UnknownVendor,
                 Amount = amount,
-                Category = "General",
+                Category = ApplicationText.Defaults.GeneralCategory,
                 Date = DateTime.UtcNow.ToString("yyyy-MM-dd"),
                 Parsed = amount > 0,
                 RawText = text
@@ -1843,3 +1764,4 @@ namespace ExpenseTracker.Api.Services
             bool SubscriptionNotificationsEnabled);
     }
 }
+

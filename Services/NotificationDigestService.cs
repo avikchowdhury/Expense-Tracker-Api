@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
+using ExpenseTracker.Shared.Constants;
 
 namespace ExpenseTracker.Api.Services
 {
@@ -33,7 +34,7 @@ namespace ExpenseTracker.Api.Services
                 return new NotificationDeliveryStatusDto
                 {
                     IsOperational = true,
-                    DeliveryMode = "smtp",
+                    DeliveryMode = ApplicationText.DeliveryModes.Smtp,
                     Message = "Weekly and monthly digests are ready to send through the configured SMTP server."
                 };
             }
@@ -41,7 +42,7 @@ namespace ExpenseTracker.Api.Services
             return new NotificationDeliveryStatusDto
             {
                 IsOperational = true,
-                DeliveryMode = "file-preview",
+                DeliveryMode = ApplicationText.DeliveryModes.FilePreview,
                 Message = $"SMTP is not configured yet, so digest previews will be written to {_storagePaths.NotificationPreviewsPath}."
             };
         }
@@ -58,7 +59,7 @@ namespace ExpenseTracker.Api.Services
                 {
                     Type = type,
                     Delivered = false,
-                    Message = "Choose either weekly-summary or monthly-report."
+                    Message = ApplicationText.Digests.ChooseDigestType
                 };
             }
 
@@ -75,7 +76,7 @@ namespace ExpenseTracker.Api.Services
                 {
                     Type = digestType,
                     Delivered = false,
-                    Message = "User profile was not found."
+                    Message = ApplicationText.Digests.UserProfileNotFound
                 };
             }
 
@@ -110,7 +111,7 @@ namespace ExpenseTracker.Api.Services
                 {
                     await TryDeliverScheduledDigestAsync(
                         user,
-                        "weekly-summary",
+                        ApplicationText.Digests.WeeklySummaryType,
                         weeklyPeriodKey,
                         aiService,
                         emailService,
@@ -121,7 +122,7 @@ namespace ExpenseTracker.Api.Services
                 {
                     await TryDeliverScheduledDigestAsync(
                         user,
-                        "monthly-report",
+                        ApplicationText.Digests.MonthlyReportType,
                         monthlyPeriodKey,
                         aiService,
                         emailService,
@@ -198,7 +199,7 @@ namespace ExpenseTracker.Api.Services
                 {
                     Type = digestType,
                     Delivered = false,
-                    Message = "Unsupported digest type."
+                    Message = ApplicationText.Digests.UnsupportedDigestType
                 };
             }
 
@@ -214,10 +215,10 @@ namespace ExpenseTracker.Api.Services
                 {
                     Type = digestType,
                     Delivered = emailed,
-                    DeliveryMode = "smtp",
+                    DeliveryMode = ApplicationText.DeliveryModes.Smtp,
                     Message = emailed
                         ? BuildSuccessMessage(digestType, isTestSend, "email")
-                        : "SMTP delivery failed for this digest."
+                        : ApplicationText.Digests.SmtpDeliveryFailed
                 };
             }
 
@@ -233,7 +234,7 @@ namespace ExpenseTracker.Api.Services
             {
                 Type = digestType,
                 Delivered = true,
-                DeliveryMode = "file-preview",
+                DeliveryMode = ApplicationText.DeliveryModes.FilePreview,
                 Message = $"{BuildSuccessMessage(digestType, isTestSend, "preview")} Saved to {previewPath}.",
                 PreviewPath = previewPath
             };
@@ -246,8 +247,8 @@ namespace ExpenseTracker.Api.Services
         {
             return digestType switch
             {
-                "weekly-summary" => await BuildWeeklyDigestAsync(userId, aiService),
-                "monthly-report" => await BuildMonthlyDigestAsync(userId, aiService),
+                ApplicationText.Digests.WeeklySummaryType => await BuildWeeklyDigestAsync(userId, aiService),
+                ApplicationText.Digests.MonthlyReportType => await BuildMonthlyDigestAsync(userId, aiService),
                 _ => null
             };
         }
@@ -351,15 +352,17 @@ namespace ExpenseTracker.Api.Services
             var normalized = type?.Trim().ToLowerInvariant();
             return normalized switch
             {
-                "weekly-summary" => "weekly-summary",
-                "monthly-report" => "monthly-report",
+                ApplicationText.Digests.WeeklySummaryType => ApplicationText.Digests.WeeklySummaryType,
+                ApplicationText.Digests.MonthlyReportType => ApplicationText.Digests.MonthlyReportType,
                 _ => null
             };
         }
 
         private static string BuildSuccessMessage(string digestType, bool isTestSend, string target)
         {
-            var label = digestType == "monthly-report" ? "monthly AI report" : "weekly summary";
+            var label = digestType == ApplicationText.Digests.MonthlyReportType
+                ? ApplicationText.Digests.MonthlyReportLabel
+                : ApplicationText.Digests.WeeklySummaryLabel;
             return isTestSend
                 ? $"Test {label} {target} generated successfully."
                 : $"Scheduled {label} {target} generated successfully.";

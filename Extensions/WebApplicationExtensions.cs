@@ -1,6 +1,7 @@
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Middleware;
 using ExpenseTracker.Api.Services;
+using ExpenseTracker.Shared.Constants;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 
@@ -25,11 +26,11 @@ namespace ExpenseTracker.Api.Extensions
             app.UseSwagger();
             app.UseSwaggerUI(options =>
             {
-                options.SwaggerEndpoint("/swagger/v1/swagger.json", "ExpenseTracker API v1");
+                options.SwaggerEndpoint(ApplicationText.Swagger.Endpoint, ApplicationText.Swagger.Title);
                 options.RoutePrefix = string.Empty;
             });
 
-            app.UseCors("AllowLocalhost");
+            app.UseCors(ApplicationText.Policies.AllowLocalhost);
 
             app.UseRouting();
             app.UseHttpsRedirection();
@@ -37,7 +38,7 @@ namespace ExpenseTracker.Api.Extensions
             app.UseStaticFiles(new StaticFileOptions
             {
                 FileProvider = new PhysicalFileProvider(storagePaths.AvatarsPath),
-                RequestPath = "/avatars"
+                RequestPath = ApplicationText.Storage.AvatarRequestPath
             });
 
             app.UseAuthentication();
