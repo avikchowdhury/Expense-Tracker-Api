@@ -2,6 +2,7 @@ using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
 using ExpenseTracker.Api.Security;
 using ExpenseTracker.Api.Services;
+using ExpenseTracker.Shared.Constants;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ExpenseTracker.Api.Controllers
@@ -22,8 +23,10 @@ namespace ExpenseTracker.Api.Controllers
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UploadReceipt([FromForm] ReceiptUploadRequestDto request)
         {
-            if (request?.File == null || request.File.Length == 0)
-                return BadRequest("Please provide a receipt file.");
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var receipt = await _receiptService.StoreReceiptAsync(CurrentUserId, request.File);
             if (!string.IsNullOrEmpty(request.Category)) receipt.Category = request.Category;
             if (!string.IsNullOrEmpty(request.Notes)) receipt.ParsedContentJson = request.Notes; // or add a Notes field if needed
@@ -46,15 +49,20 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("quick-add")]
         public async Task<IActionResult> QuickAddReceipt([FromBody] QuickAddReceiptDto request)
         {
-            if (string.IsNullOrWhiteSpace(request.Vendor) || request.Amount <= 0)
-                return BadRequest("Vendor and a positive amount are required.");
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
 
             var date = request.Date.HasValue
                 ? request.Date.Value
                 : DateTime.UtcNow;
 
             var receipt = await _receiptService.QuickAddReceiptAsync(
-                CurrentUserId, request.Vendor, request.Amount, request.Category ?? "Uncategorized", date);
+                CurrentUserId,
+                request.Vendor,
+                request.Amount,
+                request.Category ?? ApplicationText.Defaults.UncategorizedCategory,
+                date);
 
             return Ok(new ReceiptDto
             {
@@ -151,8 +159,9 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("bulk/categorize")]
         public async Task<IActionResult> BulkCategorize([FromBody] BulkCategorizeReceiptsDto request)
         {
-            if (string.IsNullOrWhiteSpace(request.Category))
-                return BadRequest(new { message = "Category is required." });
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
 
             var result = await _receiptService.BulkCategorizeAsync(CurrentUserId, request.ReceiptIds, request.Category);
             return Ok(result);
@@ -161,6 +170,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("bulk/delete")]
         public async Task<IActionResult> BulkDelete([FromBody] BulkReceiptSelectionDto request)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var result = await _receiptService.BulkDeleteAsync(CurrentUserId, request.ReceiptIds);
             return Ok(result);
         }
@@ -168,6 +181,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("bulk/apply-vendor-rules")]
         public async Task<IActionResult> BulkApplyVendorRules([FromBody] BulkReceiptSelectionDto request)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var result = await _receiptService.BulkApplyVendorRulesAsync(CurrentUserId, request.ReceiptIds);
             return Ok(result);
         }
@@ -175,6 +192,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("bulk/mark-duplicates")]
         public async Task<IActionResult> BulkMarkDuplicates([FromBody] BulkMarkDuplicateReceiptsDto request)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var result = await _receiptService.BulkMarkDuplicatesAsync(CurrentUserId, request.ReceiptIds, request.MarkAsDuplicate);
             return Ok(result);
         }

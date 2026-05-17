@@ -1,6 +1,7 @@
 using ExpenseTracker.Api.Services;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Security;
+using ExpenseTracker.Shared.Constants;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
@@ -24,7 +25,7 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (request.File == null || request.File.Length == 0)
             {
-                return BadRequest("Please provide a receipt file.");
+                return BadRequest(ApplicationText.Validation.ReceiptFileRequired);
             }
 
             var result = await _aiService.ParseReceiptAsync(request.File);
@@ -50,7 +51,7 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (string.IsNullOrWhiteSpace(request.Message))
             {
-                return BadRequest(new { message = "Please send a question for the assistant." });
+                return BadRequest(new { message = ApplicationText.Validation.AssistantQuestionRequired });
             }
 
             var result = await _aiService.ChatAsync(CurrentUserId, request.Message);
@@ -97,7 +98,7 @@ namespace ExpenseTracker.Api.Controllers
         {
             if (string.IsNullOrWhiteSpace(request.Text))
             {
-                return BadRequest(new { message = "Text is required." });
+                return BadRequest(new { message = ApplicationText.Validation.TextRequired });
             }
 
             var result = await _aiService.ParseTextExpenseAsync(request.Text);

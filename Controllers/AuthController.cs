@@ -18,6 +18,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] AuthRegisterDto request, CancellationToken cancellationToken)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var result = await _authService.RegisterAsync(request, cancellationToken);
             return Ok(result);
         }
@@ -25,6 +29,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] AuthLoginDto request, CancellationToken cancellationToken)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var result = await _authService.LoginAsync(request, cancellationToken);
             return Ok(result);
         }
@@ -32,6 +40,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("send-otp")]
         public async Task<IActionResult> SendOtp([FromBody] OtpEmailRequestDto request, CancellationToken cancellationToken)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var result = await _authService.SendOtpAsync(request, cancellationToken);
             return Ok(result);
         }
@@ -39,6 +51,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("register-otp")]
         public async Task<IActionResult> RegisterWithOtp([FromBody] AuthRegisterOtpDto request, CancellationToken cancellationToken)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var result = await _authService.RegisterWithOtpAsync(request, cancellationToken);
             return Ok(result);
         }
@@ -46,6 +62,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("forgot-password")]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto request, CancellationToken cancellationToken)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var result = await _authService.ForgotPasswordAsync(request, cancellationToken);
             return Ok(result);
         }
@@ -53,6 +73,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("reset-password")]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto request, CancellationToken cancellationToken)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var result = await _authService.ResetPasswordAsync(request, cancellationToken);
             return Ok(result);
         }

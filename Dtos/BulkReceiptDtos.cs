@@ -1,12 +1,20 @@
+using ExpenseTracker.Shared.Constants;
+using System.ComponentModel.DataAnnotations;
+
 namespace ExpenseTracker.Api.Dtos
 {
     public class BulkReceiptSelectionDto
     {
+        [Required]
+        [NotEmptyCollection(ErrorMessage = ApplicationText.Receipts.SelectAtLeastOneReceipt)]
         public List<int> ReceiptIds { get; set; } = new();
     }
 
     public class BulkCategorizeReceiptsDto : BulkReceiptSelectionDto
     {
+        [Required]
+        [NotBlank(ErrorMessage = ApplicationText.Validation.CategoryRequired)]
+        [StringLength(100)]
         public string Category { get; set; } = string.Empty;
     }
 

@@ -2,6 +2,7 @@ using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
 using ExpenseTracker.Api.Security;
+using ExpenseTracker.Shared.Constants;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
@@ -55,11 +56,13 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> AddCategory([FromBody] CategoryDto categoryDto)
         {
-            if (string.IsNullOrWhiteSpace(categoryDto.Name))
-                return BadRequest("Category name is required.");
+            var validationProblem = ValidateRequest(categoryDto);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == CurrentUserId && c.Name == categoryDto.Name);
             if (exists)
-                return Conflict("Category already exists.");
+                return Conflict(ApplicationText.Categories.CategoryAlreadyExists);
             var category = new Category { UserId = CurrentUserId, Name = categoryDto.Name };
             await _unitOfWork.Categories.AddAsync(category);
             await _unitOfWork.SaveChangesAsync();
@@ -71,15 +74,17 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateCategory(int id, [FromBody] CategoryDto categoryDto)
         {
-            if (string.IsNullOrWhiteSpace(categoryDto.Name))
-                return BadRequest("Category name is required.");
+            var validationProblem = ValidateRequest(categoryDto);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var category = await _unitOfWork.Categories.Query().FirstOrDefaultAsync(c => c.Id == id && c.UserId == CurrentUserId);
             if (category == null)
                 return NotFound();
             // Prevent duplicate names
             var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == CurrentUserId && c.Name == categoryDto.Name && c.Id != id);
             if (exists)
-                return Conflict("Category already exists.");
+                return Conflict(ApplicationText.Categories.CategoryAlreadyExists);
             category.Name = categoryDto.Name;
             await _unitOfWork.SaveChangesAsync();
             return Ok(new CategoryDto { Id = category.Id, Name = category.Name });
@@ -99,19 +104,21 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost("rules")]
         public async Task<IActionResult> AddVendorRule([FromBody] VendorCategoryRuleDto ruleDto)
         {
+            var validationProblem = ValidateRequest(ruleDto);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var normalizedPattern = NormalizeVendorPattern(ruleDto.VendorPattern);
-            if (string.IsNullOrWhiteSpace(normalizedPattern))
-                return BadRequest("Vendor pattern is required.");
 
             var category = await _unitOfWork.Categories.Query()
                 .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == CurrentUserId);
             if (category == null)
-                return BadRequest("Select a valid category.");
+                return BadRequest(ApplicationText.Validation.SelectValidCategory);
 
             var exists = await _unitOfWork.VendorCategoryRules.Query()
                 .AnyAsync(rule => rule.UserId == CurrentUserId && rule.VendorPattern.ToLower() == normalizedPattern.ToLower());
             if (exists)
-                return Conflict("A rule for this vendor pattern already exists.");
+                return Conflict(ApplicationText.Categories.VendorRuleAlreadyExists);
 
             var rule = new VendorCategoryRule
             {
@@ -138,9 +145,11 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPut("rules/{id}")]
         public async Task<IActionResult> UpdateVendorRule(int id, [FromBody] VendorCategoryRuleDto ruleDto)
         {
+            var validationProblem = ValidateRequest(ruleDto);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var normalizedPattern = NormalizeVendorPattern(ruleDto.VendorPattern);
-            if (string.IsNullOrWhiteSpace(normalizedPattern))
-                return BadRequest("Vendor pattern is required.");
 
             var rule = await _unitOfWork.VendorCategoryRules.Query()
                 .Include(existingRule => existingRule.Category)
@@ -151,14 +160,14 @@ namespace ExpenseTracker.Api.Controllers
             var category = await _unitOfWork.Categories.Query()
                 .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == CurrentUserId);
             if (category == null)
-                return BadRequest("Select a valid category.");
+                return BadRequest(ApplicationText.Validation.SelectValidCategory);
 
             var exists = await _unitOfWork.VendorCategoryRules.Query().AnyAsync(existingRule =>
                 existingRule.UserId == CurrentUserId &&
                 existingRule.VendorPattern.ToLower() == normalizedPattern.ToLower() &&
                 existingRule.Id != id);
             if (exists)
-                return Conflict("A rule for this vendor pattern already exists.");
+                return Conflict(ApplicationText.Categories.VendorRuleAlreadyExists);
 
             rule.VendorPattern = normalizedPattern;
             rule.CategoryId = category.Id;

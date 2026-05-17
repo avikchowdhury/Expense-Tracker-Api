@@ -103,6 +103,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateBudget([FromBody] BudgetWriteDto request)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var budget = new Budget
             {
                 UserId = CurrentUserId,
@@ -129,6 +133,10 @@ namespace ExpenseTracker.Api.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateBudget(int id, [FromBody] BudgetWriteDto request)
         {
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
+                return validationProblem;
+
             var budget = await _unitOfWork.Budgets.Query().FirstOrDefaultAsync(b => b.Id == id && b.UserId == CurrentUserId);
             if (budget == null) return NotFound();
 

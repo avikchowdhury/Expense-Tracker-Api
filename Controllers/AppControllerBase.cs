@@ -1,5 +1,7 @@
+using ExpenseTracker.Shared.Constants;
 using ExpenseTracker.Api.Security;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
 namespace ExpenseTracker.Api.Controllers
@@ -18,7 +20,7 @@ namespace ExpenseTracker.Api.Controllers
             var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdValue, out var userId))
             {
-                throw new UnauthorizedAccessException("Authenticated user context is not available.");
+                throw new UnauthorizedAccessException(ApplicationText.Security.AuthenticatedUserContextUnavailable);
             }
 
             var email = User.FindFirstValue(ClaimTypes.Email)
@@ -36,6 +38,43 @@ namespace ExpenseTracker.Api.Controllers
             }
 
             return new RequestUserContext(userId, email, roles);
+        }
+
+        protected IActionResult? ValidateRequest<TRequest>(TRequest? request)
+        {
+            if (request is null)
+            {
+                ModelState.AddModelError(string.Empty, ApplicationText.Validation.RequestBodyRequired);
+                return ValidationProblem(ModelState);
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return ValidationProblem(ModelState);
+            }
+
+            var validationContext = new ValidationContext(request);
+            var validationResults = new List<ValidationResult>();
+            if (Validator.TryValidateObject(request, validationContext, validationResults, validateAllProperties: true))
+            {
+                return null;
+            }
+
+            foreach (var validationResult in validationResults)
+            {
+                var memberNames = validationResult.MemberNames.Any()
+                    ? validationResult.MemberNames
+                    : [string.Empty];
+
+                foreach (var memberName in memberNames)
+                {
+                    ModelState.AddModelError(
+                        memberName,
+                        validationResult.ErrorMessage ?? ApplicationText.Validation.InvalidRequest);
+                }
+            }
+
+            return ValidationProblem(ModelState);
         }
     }
 }

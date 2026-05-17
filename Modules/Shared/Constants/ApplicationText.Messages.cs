@@ -2,6 +2,22 @@ namespace ExpenseTracker.Shared.Constants;
 
 public static partial class ApplicationText
 {
+    public static class Validation
+    {
+        public const string RequestBodyRequired = "Request body is required.";
+        public const string InvalidRequest = "One or more validation errors occurred.";
+        public const string ReceiptFileRequired = "Please provide a receipt file.";
+        public const string AssistantQuestionRequired = "Please send a question for the assistant.";
+        public const string TextRequired = "Text is required.";
+        public const string DigestTypeRequired = "Digest type is required.";
+        public const string CategoryRequired = "Category is required.";
+        public const string CategoryNameRequired = "Category name is required.";
+        public const string VendorRequired = "Vendor is required.";
+        public const string PositiveAmountRequired = "Amount must be greater than zero.";
+        public const string VendorPatternRequired = "Vendor pattern is required.";
+        public const string SelectValidCategory = "Select a valid category.";
+    }
+
     public static class Auth
     {
         public const int MinimumPasswordLength = 6;
@@ -49,6 +65,12 @@ public static partial class ApplicationText
         public const string CannotDeleteOwnAccount = "Use another admin account to delete your own account.";
         public const string NoMatchingUsers = "No matching users were found.";
         public const string AtLeastOneAdminMustRemain = "At least one admin account must remain in the workspace.";
+    }
+
+    public static class Categories
+    {
+        public const string CategoryAlreadyExists = "Category already exists.";
+        public const string VendorRuleAlreadyExists = "A rule for this vendor pattern already exists.";
     }
 
     public static class Email

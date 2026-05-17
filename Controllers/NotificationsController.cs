@@ -38,9 +38,10 @@ namespace ExpenseTracker.Api.Controllers
             [FromBody] Dtos.SendTestDigestRequestDto request,
             CancellationToken cancellationToken)
         {
-            if (request == null || string.IsNullOrWhiteSpace(request.Type))
+            var validationProblem = ValidateRequest(request);
+            if (validationProblem is not null)
             {
-                return BadRequest(new { message = "Digest type is required." });
+                return validationProblem;
             }
 
             var result = await _notificationDigestService.SendTestDigestAsync(
