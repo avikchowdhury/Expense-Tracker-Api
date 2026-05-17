@@ -11,9 +11,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\Services\**\*.cs"
-             Exclude="..\..\Services\AIExpenseTextParser.cs;..\..\Services\AIModelClient.cs;..\..\Services\AIReceiptVisionParser.cs;..\..\Services\AIResponseTextExtractor.cs;..\..\Services\AvatarStorageService.cs;..\..\Services\EmailService.cs;..\..\Services\FileStoragePaths.cs;..\..\Services\IAIExpenseTextParser.cs;..\..\Services\IAIModelClient.cs;..\..\Services\IAIReceiptVisionParser.cs;..\..\Services\IAvatarStorageService.cs;..\..\Services\IEmailService.cs;..\..\Services\IJwtService.cs;..\..\Services\IPasswordHashService.cs;..\..\Services\JwtService.cs;..\..\Services\PasswordHashService.cs"
-             Link="Services\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\Data\**\*.cs"
+             Exclude="..\..\Data\I*.cs"
+             Link="Data\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\Services\AIExpenseTextParser.cs" Link="Services\AIExpenseTextParser.cs" />
+    <Compile Include="..\..\Services\AIModelClient.cs" Link="Services\AIModelClient.cs" />
+    <Compile Include="..\..\Services\AIReceiptVisionParser.cs" Link="Services\AIReceiptVisionParser.cs" />
+    <Compile Include="..\..\Services\AIResponseTextExtractor.cs" Link="Services\AIResponseTextExtractor.cs" />
+    <Compile Include="..\..\Services\AvatarStorageService.cs" Link="Services\AvatarStorageService.cs" />
+    <Compile Include="..\..\Services\EmailService.cs" Link="Services\EmailService.cs" />
+    <Compile Include="..\..\Services\JwtService.cs" Link="Services\JwtService.cs" />
+    <Compile Include="..\..\Services\PasswordHashService.cs" Link="Services\PasswordHashService.cs" />
+    <Compile Include="..\..\Services\ReceiptFallbackHelper.cs" Link="Services\ReceiptFallbackHelper.cs" />
   </ItemGroup>
 
   <ItemGroup>

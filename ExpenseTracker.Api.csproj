@@ -56,6 +56,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="Modules\Infrastructure\ExpenseTracker.Infrastructure.csproj" />
     <ProjectReference Include="Modules\Service\ExpenseTracker.Services.csproj" />
     <ProjectReference Include="Modules\Shared\ExpenseTracker.Shared.csproj" />
   </ItemGroup>

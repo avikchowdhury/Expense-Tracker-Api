@@ -20,13 +20,4 @@ namespace ExpenseTracker.Api.Services
         Task<VendorAnalysisDto> GetVendorAnalysisAsync(int userId);
         Task<DuplicateCheckResultDto> CheckDuplicateReceiptAsync(int userId, string vendor, decimal amount, string date);
     }
-
-    public class ReceiptParseResult
-    {
-        public string Vendor { get; set; } = string.Empty;
-        public decimal Amount { get; set; }
-        public string Category { get; set; } = string.Empty;
-        public string Date { get; set; } = string.Empty;
-        public string RawText { get; set; } = string.Empty;
-    }
 }

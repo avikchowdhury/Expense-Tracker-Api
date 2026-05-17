@@ -1,12 +1,7 @@
-using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
-using ExpenseTracker.Api.Models;
 using ExpenseTracker.Api.Security;
-using ExpenseTracker.Shared.Constants;
+using ExpenseTracker.Api.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace ExpenseTracker.Api.Controllers
 {
@@ -14,42 +9,24 @@ namespace ExpenseTracker.Api.Controllers
     [AppAuthorize]
     public class CategoriesController : AppControllerBase
     {
-        private readonly IUnitOfWork _unitOfWork;
-        public CategoriesController(IUnitOfWork unitOfWork)
+        private readonly ICategoryService _categoryService;
+
+        public CategoriesController(ICategoryService categoryService)
         {
-            _unitOfWork = unitOfWork;
+            _categoryService = categoryService;
         }
 
 
         [HttpGet]
         public async Task<IActionResult> GetCategories()
         {
-            var categories = await _unitOfWork.Categories.Query()
-                .Where(c => c.UserId == CurrentUserId)
-                .Select(c => new CategoryDto { Id = c.Id, Name = c.Name })
-                .ToListAsync();
-            return Ok(categories);
+            return Ok(await _categoryService.GetCategoriesAsync(CurrentUserId));
         }
 
         [HttpGet("rules")]
         public async Task<IActionResult> GetVendorRules()
         {
-            var rules = await _unitOfWork.VendorCategoryRules.Query()
-                .Where(rule => rule.UserId == CurrentUserId)
-                .Include(rule => rule.Category)
-                .OrderBy(rule => rule.VendorPattern)
-                .Select(rule => new VendorCategoryRuleDto
-                {
-                    Id = rule.Id,
-                    CategoryId = rule.CategoryId,
-                    CategoryName = rule.Category != null ? rule.Category.Name : string.Empty,
-                    VendorPattern = rule.VendorPattern,
-                    IsActive = rule.IsActive,
-                    CreatedAt = rule.CreatedAt
-                })
-                .ToListAsync();
-
-            return Ok(rules);
+            return Ok(await _categoryService.GetVendorRulesAsync(CurrentUserId));
         }
 
 
@@ -60,14 +37,7 @@ namespace ExpenseTracker.Api.Controllers
             if (validationProblem is not null)
                 return validationProblem;
 
-            var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == CurrentUserId && c.Name == categoryDto.Name);
-            if (exists)
-                return Conflict(ApplicationText.Categories.CategoryAlreadyExists);
-            var category = new Category { UserId = CurrentUserId, Name = categoryDto.Name };
-            await _unitOfWork.Categories.AddAsync(category);
-            await _unitOfWork.SaveChangesAsync();
-            categoryDto.Id = category.Id;
-            return Ok(categoryDto);
+            return Ok(await _categoryService.AddCategoryAsync(CurrentUserId, categoryDto));
         }
 
 
@@ -78,26 +48,19 @@ namespace ExpenseTracker.Api.Controllers
             if (validationProblem is not null)
                 return validationProblem;
 
-            var category = await _unitOfWork.Categories.Query().FirstOrDefaultAsync(c => c.Id == id && c.UserId == CurrentUserId);
+            var category = await _categoryService.UpdateCategoryAsync(CurrentUserId, id, categoryDto);
             if (category == null)
                 return NotFound();
-            // Prevent duplicate names
-            var exists = await _unitOfWork.Categories.Query().AnyAsync(c => c.UserId == CurrentUserId && c.Name == categoryDto.Name && c.Id != id);
-            if (exists)
-                return Conflict(ApplicationText.Categories.CategoryAlreadyExists);
-            category.Name = categoryDto.Name;
-            await _unitOfWork.SaveChangesAsync();
-            return Ok(new CategoryDto { Id = category.Id, Name = category.Name });
+
+            return Ok(category);
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteCategory(int id)
         {
-            var category = await _unitOfWork.Categories.Query().FirstOrDefaultAsync(c => c.Id == id && c.UserId == CurrentUserId);
-            if (category == null)
+            if (!await _categoryService.DeleteCategoryAsync(CurrentUserId, id))
                 return NotFound();
-            _unitOfWork.Categories.Remove(category);
-            await _unitOfWork.SaveChangesAsync();
+
             return NoContent();
         }
 
@@ -108,38 +71,7 @@ namespace ExpenseTracker.Api.Controllers
             if (validationProblem is not null)
                 return validationProblem;
 
-            var normalizedPattern = NormalizeVendorPattern(ruleDto.VendorPattern);
-
-            var category = await _unitOfWork.Categories.Query()
-                .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == CurrentUserId);
-            if (category == null)
-                return BadRequest(ApplicationText.Validation.SelectValidCategory);
-
-            var exists = await _unitOfWork.VendorCategoryRules.Query()
-                .AnyAsync(rule => rule.UserId == CurrentUserId && rule.VendorPattern.ToLower() == normalizedPattern.ToLower());
-            if (exists)
-                return Conflict(ApplicationText.Categories.VendorRuleAlreadyExists);
-
-            var rule = new VendorCategoryRule
-            {
-                UserId = CurrentUserId,
-                CategoryId = category.Id,
-                VendorPattern = normalizedPattern,
-                IsActive = ruleDto.IsActive
-            };
-
-            await _unitOfWork.VendorCategoryRules.AddAsync(rule);
-            await _unitOfWork.SaveChangesAsync();
-
-            return Ok(new VendorCategoryRuleDto
-            {
-                Id = rule.Id,
-                CategoryId = category.Id,
-                CategoryName = category.Name,
-                VendorPattern = rule.VendorPattern,
-                IsActive = rule.IsActive,
-                CreatedAt = rule.CreatedAt
-            });
+            return Ok(await _categoryService.AddVendorRuleAsync(CurrentUserId, ruleDto));
         }
 
         [HttpPut("rules/{id}")]
@@ -149,61 +81,20 @@ namespace ExpenseTracker.Api.Controllers
             if (validationProblem is not null)
                 return validationProblem;
 
-            var normalizedPattern = NormalizeVendorPattern(ruleDto.VendorPattern);
-
-            var rule = await _unitOfWork.VendorCategoryRules.Query()
-                .Include(existingRule => existingRule.Category)
-                .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == CurrentUserId);
+            var rule = await _categoryService.UpdateVendorRuleAsync(CurrentUserId, id, ruleDto);
             if (rule == null)
                 return NotFound();
-
-            var category = await _unitOfWork.Categories.Query()
-                .FirstOrDefaultAsync(existingCategory => existingCategory.Id == ruleDto.CategoryId && existingCategory.UserId == CurrentUserId);
-            if (category == null)
-                return BadRequest(ApplicationText.Validation.SelectValidCategory);
-
-            var exists = await _unitOfWork.VendorCategoryRules.Query().AnyAsync(existingRule =>
-                existingRule.UserId == CurrentUserId &&
-                existingRule.VendorPattern.ToLower() == normalizedPattern.ToLower() &&
-                existingRule.Id != id);
-            if (exists)
-                return Conflict(ApplicationText.Categories.VendorRuleAlreadyExists);
-
-            rule.VendorPattern = normalizedPattern;
-            rule.CategoryId = category.Id;
-            rule.IsActive = ruleDto.IsActive;
-
-            await _unitOfWork.SaveChangesAsync();
-
-            return Ok(new VendorCategoryRuleDto
-            {
-                Id = rule.Id,
-                CategoryId = category.Id,
-                CategoryName = category.Name,
-                VendorPattern = rule.VendorPattern,
-                IsActive = rule.IsActive,
-                CreatedAt = rule.CreatedAt
-            });
+            
+            return Ok(rule);
         }
 
         [HttpDelete("rules/{id}")]
         public async Task<IActionResult> DeleteVendorRule(int id)
         {
-            var rule = await _unitOfWork.VendorCategoryRules.Query()
-                .FirstOrDefaultAsync(existingRule => existingRule.Id == id && existingRule.UserId == CurrentUserId);
-            if (rule == null)
+            if (!await _categoryService.DeleteVendorRuleAsync(CurrentUserId, id))
                 return NotFound();
 
-            _unitOfWork.VendorCategoryRules.Remove(rule);
-            await _unitOfWork.SaveChangesAsync();
             return NoContent();
-        }
-
-        private static string NormalizeVendorPattern(string? vendorPattern)
-        {
-            return string.IsNullOrWhiteSpace(vendorPattern)
-                ? string.Empty
-                : vendorPattern.Trim();
         }
     }
 }

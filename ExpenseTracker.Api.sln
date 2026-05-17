@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ExpenseTracker.Services", "
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ExpenseTracker.Shared", "Modules\Shared\ExpenseTracker.Shared.csproj", "{C4D6D4D7-5B34-4A12-912C-4A05AF2B30E9}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ExpenseTracker.Infrastructure", "Modules\Infrastructure\ExpenseTracker.Infrastructure.csproj", "{0F1F34AD-3B52-47A0-B2CA-9D8CF0D17A41}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{21545733-E25D-4D2C-A298-505F881206A4}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExpenseTracker.Api.Tests", "Tests\ExpenseTracker.Api.Tests\ExpenseTracker.Api.Tests.csproj", "{70E7CAAC-950E-4CCC-BF9D-8F8DD6A75BDA}"
@@ -31,6 +33,10 @@ Global
 		{C4D6D4D7-5B34-4A12-912C-4A05AF2B30E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C4D6D4D7-5B34-4A12-912C-4A05AF2B30E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C4D6D4D7-5B34-4A12-912C-4A05AF2B30E9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F1F34AD-3B52-47A0-B2CA-9D8CF0D17A41}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F1F34AD-3B52-47A0-B2CA-9D8CF0D17A41}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F1F34AD-3B52-47A0-B2CA-9D8CF0D17A41}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F1F34AD-3B52-47A0-B2CA-9D8CF0D17A41}.Release|Any CPU.Build.0 = Release|Any CPU
 		{70E7CAAC-950E-4CCC-BF9D-8F8DD6A75BDA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{70E7CAAC-950E-4CCC-BF9D-8F8DD6A75BDA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{70E7CAAC-950E-4CCC-BF9D-8F8DD6A75BDA}.Release|Any CPU.ActiveCfg = Release|Any CPU

@@ -14,9 +14,17 @@
     <Compile Include="..\..\Dtos\**\*.cs" Link="Dtos\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\Models\**\*.cs" Link="Models\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\Configuration\JwtSettings.cs" Link="Configuration\JwtSettings.cs" />
+    <Compile Include="..\..\Data\I*.cs" Link="Data\%(Filename)%(Extension)" />
     <Compile Include="..\..\Security\AppRoles.cs" Link="Security\AppRoles.cs" />
     <Compile Include="..\..\Extensions\ParsingHelpers.cs" Link="Extensions\ParsingHelpers.cs" />
     <Compile Include="..\..\Services\FileStoragePaths.cs" Link="Services\FileStoragePaths.cs" />
+    <Compile Include="..\..\Services\IAIExpenseTextParser.cs" Link="Services\IAIExpenseTextParser.cs" />
+    <Compile Include="..\..\Services\IAIModelClient.cs" Link="Services\IAIModelClient.cs" />
+    <Compile Include="..\..\Services\IAIReceiptVisionParser.cs" Link="Services\IAIReceiptVisionParser.cs" />
+    <Compile Include="..\..\Services\IAvatarStorageService.cs" Link="Services\IAvatarStorageService.cs" />
+    <Compile Include="..\..\Services\IEmailService.cs" Link="Services\IEmailService.cs" />
+    <Compile Include="..\..\Services\IJwtService.cs" Link="Services\IJwtService.cs" />
+    <Compile Include="..\..\Services\IPasswordHashService.cs" Link="Services\IPasswordHashService.cs" />
   </ItemGroup>
 
 </Project>

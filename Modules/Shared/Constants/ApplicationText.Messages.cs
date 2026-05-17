@@ -73,6 +73,13 @@ public static partial class ApplicationText
         public const string VendorRuleAlreadyExists = "A rule for this vendor pattern already exists.";
     }
 
+    public static class Profile
+    {
+        public const string AvatarFileRequired = "No file uploaded.";
+        public const string InvalidPhoneNumber = "Phone number must include a country code and a 10-digit number.";
+        public const string OldPasswordIncorrect = "Old password is incorrect.";
+    }
+
     public static class Email
     {
         public const string FromName = "AI Expense Tracker";

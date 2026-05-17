@@ -88,9 +88,13 @@ namespace ExpenseTracker.Api.Extensions
             services.AddAuthorization();
 
             services.AddScoped<IJwtService, JwtService>();
+            services.AddScoped<IPasswordHashService, PasswordHashService>();
+            services.AddScoped<IAvatarStorageService, AvatarStorageService>();
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IAdminUserDeletionService, AdminUserDeletionService>();
             services.AddScoped<IUserRoleService, UserRoleService>();
+            services.AddScoped<IProfileService, ProfileService>();
+            services.AddScoped<ICategoryService, CategoryService>();
             services.AddScoped<IBudgetHealthService, BudgetHealthService>();
             services.AddScoped<IBudgetAdvisorService, BudgetAdvisorService>();
             services.AddScoped<IEmailService, EmailService>();
@@ -98,6 +102,9 @@ namespace ExpenseTracker.Api.Extensions
             services.AddScoped<IAnalyticsService, AnalyticsService>();
             services.AddSingleton<INotificationDigestService, NotificationDigestService>();
             services.AddHostedService<NotificationDigestBackgroundService>();
+            services.AddScoped<IAIInsightsService, AIInsightsService>();
+            services.AddScoped<IAISpendingAnalysisService, AISpendingAnalysisService>();
+            services.AddScoped<IAINotificationService, AINotificationService>();
             services.AddScoped<IAIService, AIService>();
             services.AddHttpClient<IAIModelClient, AIModelClient>();
             services.AddHttpClient<IAIExpenseTextParser, AIExpenseTextParser>();

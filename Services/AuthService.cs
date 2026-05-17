@@ -1,6 +1,5 @@
 using System.Net.Mail;
 using System.Security.Cryptography;
-using System.Text;
 using ExpenseTracker.Api.Data;
 using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Models;
@@ -20,6 +19,7 @@ public sealed class AuthService : IAuthService
     private readonly IUserRoleService _userRoleService;
     private readonly IMemoryCache _cache;
     private readonly IEmailService _emailService;
+    private readonly IPasswordHashService _passwordHashService;
     private readonly IWebHostEnvironment _environment;
 
     public AuthService(
@@ -28,6 +28,7 @@ public sealed class AuthService : IAuthService
         IUserRoleService userRoleService,
         IMemoryCache cache,
         IEmailService emailService,
+        IPasswordHashService passwordHashService,
         IWebHostEnvironment environment)
     {
         _unitOfWork = unitOfWork;
@@ -35,6 +36,7 @@ public sealed class AuthService : IAuthService
         _userRoleService = userRoleService;
         _cache = cache;
         _emailService = emailService;
+        _passwordHashService = passwordHashService;
         _environment = environment;
     }
 
@@ -46,8 +48,9 @@ public sealed class AuthService : IAuthService
         var user = new User
         {
             Email = email,
-            PasswordHash = HashPassword(request.Password)
+            PasswordHash = string.Empty
         };
+        user.PasswordHash = _passwordHashService.HashPassword(user, request.Password);
 
         await _unitOfWork.Users.AddAsync(user, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -63,9 +66,24 @@ public sealed class AuthService : IAuthService
         var user = await _unitOfWork.Users.Query()
             .FirstOrDefaultAsync(x => x.Email == email, cancellationToken);
 
-        if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
+        if (user == null)
         {
             throw new ApiRequestException(StatusCodes.Status401Unauthorized, ApplicationText.Auth.InvalidCredentials);
+        }
+
+        var verificationResult = _passwordHashService.VerifyPassword(
+            user,
+            user.PasswordHash,
+            request.Password,
+            out var upgradedHash);
+        if (verificationResult == Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed)
+        {
+            throw new ApiRequestException(StatusCodes.Status401Unauthorized, ApplicationText.Auth.InvalidCredentials);
+        }
+
+        if (!string.IsNullOrWhiteSpace(upgradedHash))
+        {
+            user.PasswordHash = upgradedHash;
         }
 
         var primaryRole = await _userRoleService.GetPrimaryRoleAsync(user, cancellationToken);
@@ -122,8 +140,9 @@ public sealed class AuthService : IAuthService
         var user = new User
         {
             Email = email,
-            PasswordHash = HashPassword(request.Password)
+            PasswordHash = string.Empty
         };
+        user.PasswordHash = _passwordHashService.HashPassword(user, request.Password);
 
         await _unitOfWork.Users.AddAsync(user, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -188,7 +207,7 @@ public sealed class AuthService : IAuthService
             throw new ApiRequestException(StatusCodes.Status400BadRequest, ApplicationText.Auth.InvalidOrExpiredResetCode);
         }
 
-        user.PasswordHash = HashPassword(request.NewPassword);
+        user.PasswordHash = _passwordHashService.HashPassword(user, request.NewPassword);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         _cache.Remove($"{ApplicationText.CacheKeys.ResetPrefix}{email}");
 
@@ -263,17 +282,5 @@ public sealed class AuthService : IAuthService
         {
             return false;
         }
-    }
-
-    private static string HashPassword(string password)
-    {
-        using var sha = SHA256.Create();
-        var hashed = sha.ComputeHash(Encoding.UTF8.GetBytes(password));
-        return Convert.ToBase64String(hashed);
-    }
-
-    private static bool VerifyPassword(string password, string hash)
-    {
-        return HashPassword(password) == hash;
     }
 }

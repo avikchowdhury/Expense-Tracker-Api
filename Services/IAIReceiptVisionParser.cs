@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using ExpenseTracker.Api.Dtos;
 
 namespace ExpenseTracker.Api.Services;
 
